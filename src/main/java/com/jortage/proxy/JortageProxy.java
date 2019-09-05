@@ -139,7 +139,7 @@ public class JortageProxy {
 					return;
 				}
 				List<String> split = SPLITTER.splitToList(target);
-				if (split.size() != 3) {
+				if (split.size() != 2) {
 					response.sendError(400);
 					return;
 				} else {
