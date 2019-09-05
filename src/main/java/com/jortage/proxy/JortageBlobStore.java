@@ -30,6 +30,7 @@ import org.jclouds.domain.Location;
 import org.jclouds.io.Payload;
 import org.jclouds.io.payloads.FilePayload;
 
+import com.google.common.base.Objects;
 import com.google.common.hash.Hashing;
 import com.google.common.hash.HashingOutputStream;
 import com.google.common.io.ByteStreams;
@@ -46,12 +47,19 @@ public class JortageBlobStore extends ForwardingBlobStore {
 		this.paths = paths;
 	}
 
-	private String buildKey(String container, String name) {
-		return JortageProxy.buildKey(identity, container, name);
+	private String buildKey(String name) {
+		return JortageProxy.buildKey(identity, name);
+	}
+
+	private void checkContainer(String container) {
+		if (!Objects.equal(container, identity)) {
+			throw new IllegalArgumentException("Bucket name must match your access ID");
+		}
 	}
 
 	private String map(String container, String name) {
-		String hash = paths.get(buildKey(container, name));
+		checkContainer(container);
+		String hash = paths.get(buildKey(name));
 		if (hash == null) throw new IllegalArgumentException("Not found");
 		return JortageProxy.hashToPath(hash);
 	}
@@ -119,6 +127,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public String putBlob(String container, Blob blob) {
+		checkContainer(container);
 		File tempFile = null;
 		try {
 			File f = File.createTempFile("jortage-proxy-", ".dat");
@@ -134,14 +143,16 @@ public class JortageBlobStore extends ForwardingBlobStore {
 			try (Payload payload = new FilePayload(f)) {
 				payload.getContentMetadata().setContentType(contentType);
 				if (delegate().blobExists(bucket, JortageProxy.hashToPath(hash))) {
-					return delegate().blobMetadata(bucket, JortageProxy.hashToPath(hash)).getETag();
+					String etag = delegate().blobMetadata(bucket, JortageProxy.hashToPath(hash)).getETag();
+					paths.put(buildKey(blob.getMetadata().getName()), hash);
+					return etag;
 				}
 				Blob blob2 = blobBuilder(JortageProxy.hashToPath(hash))
 						.payload(payload)
 						.userMetadata(blob.getMetadata().getUserMetadata())
 						.build();
 				String etag = delegate().putBlob(bucket, blob2, new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ));
-				paths.put(buildKey(container, blob.getMetadata().getName()), hash);
+				paths.put(buildKey(blob.getMetadata().getName()), hash);
 				return etag;
 			}
 		} catch (IOException e) {

@@ -13,6 +13,9 @@ dependencies {
 	implementation 'org.gaul:s3proxy:1.6.1'
 }
 
+project.configurations.implementation.setCanBeResolved(true)
+
 task capsule(type: FatCapsule) {
+	embedConfiguration configurations.implementation
 	applicationClass 'com.jortage.proxy.JortageProxy'
 }

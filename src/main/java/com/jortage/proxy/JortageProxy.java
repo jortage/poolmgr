@@ -37,7 +37,7 @@ import blue.endless.jankson.JsonPrimitive;
 
 public class JortageProxy {
 
-	private static final Splitter SPLITTER = Splitter.on('/').limit(3).omitEmptyStrings();
+	private static final Splitter SPLITTER = Splitter.on('/').limit(2).omitEmptyStrings();
 
 	private static final File configFile = new File("config.jkson");
 	private static JsonObject config;
@@ -99,9 +99,8 @@ public class JortageProxy {
 						System.out.println(en);
 					}
 					String identity = split.get(0);
-					String container = split.get(1);
-					String name = split.get(2);
-					String key = buildKey(identity, container, name);
+					String name = split.get(1);
+					String key = buildKey(identity, name);
 					if (paths.containsKey(key)) {
 						response.setHeader("Location", publicHost+"/"+hashToPath(paths.get(key)));
 						response.setStatus(301);
@@ -144,8 +143,8 @@ public class JortageProxy {
 		}
 	}
 
-	public static String buildKey(String identity, String container, String name) {
-		return identity+":"+container+":"+name;
+	public static String buildKey(String identity, String name) {
+		return identity+":"+name;
 	}
 
 	public static String hashToPath(String hash) {
