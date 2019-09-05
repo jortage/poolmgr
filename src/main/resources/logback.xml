@@ -4,14 +4,14 @@
       <pattern>%d{MM-dd HH:mm:ss.SSS} %p %t %c{30}:%L %X{clientId}|%X{sessionId}:%X{messageId}:%X{fileId}] %m%n</pattern>
     </encoder>
     <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-      <level>${LOG_LEVEL:-info}</level>
+      <level>${LOG_LEVEL:-off}</level>
     </filter>
   </appender>
 
-  <logger name="org.eclipse.jetty" level="${JETTY_LOG_LEVEL:-info}" />
-  <logger name="org.gaul.shaded.org.eclipse.jetty" level="${JETTY_LOG_LEVEL:-info}" />
+  <logger name="org.eclipse.jetty" level="${JETTY_LOG_LEVEL:-off}" />
+  <logger name="org.gaul.shaded.org.eclipse.jetty" level="${JETTY_LOG_LEVEL:-off}" />
 
-  <root level="${LOG_LEVEL:-info}">
+  <root level="${LOG_LEVEL:-off}">
     <appender-ref ref="STDOUT" />
   </root>
 </configuration>

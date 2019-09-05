@@ -115,7 +115,6 @@ public class JortageProxy {
 
 			@Override
 			public Entry<String, BlobStore> locateBlobStore(String identity, String container, String blob) {
-				System.out.println("identity: "+identity);
 				if (System.currentTimeMillis()-configFileLastLoaded > 500 && configFile.lastModified() > configFileLastLoaded) reloadConfig();
 				if (config.containsKey("users") && config.getObject("users").containsKey(identity)) {
 					return Maps.immutableEntry(((JsonPrimitive)config.getObject("users").get(identity)).asString(), new JortageBlobStore(backingBlobStore, bucket, identity, paths));
