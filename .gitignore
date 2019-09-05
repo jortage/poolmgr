@@ -1,0 +1,12 @@
+.classpath
+.gradle
+.project
+.metadata
+.settings
+/bin
+/build
+hs_err_pid*.log
+*.iml
+*.DS_Store
+.idea/
+data.mv

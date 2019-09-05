@@ -1,0 +1,13 @@
+{
+	backend: {
+		endpoint: "https://sfo2.digitaloceanspaces.com"
+		accessKeyId: "ACCESS_KEY_ID"
+		secretAccessKey: "SECRET_ACCESS_KEY"
+		bucket: "mybucket"
+		publicHost: "https://sfo2.digitaloceanspaces.com/mybucket"
+	}
+	users: {
+		// ACCESS_KEY_ID: "SECRET_ACCESS_KEY"
+		test: "test"
+	}
+}

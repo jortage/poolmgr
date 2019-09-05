@@ -1,0 +1,18 @@
+plugins {
+	id 'java'
+	id 'us.kirchmeier.capsule' version '1.0.2'
+}	
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation 'blue.endless:jankson:1.1.2'
+	implementation 'com.h2database:h2-mvstore:1.4.199'
+	implementation 'org.gaul:s3proxy:1.6.1'
+}
+
+task capsule(type: FatCapsule) {
+	applicationClass 'com.jortage.proxy.JortageProxy'
+}
