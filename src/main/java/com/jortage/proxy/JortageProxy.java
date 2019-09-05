@@ -1,13 +1,21 @@
 package com.jortage.proxy;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Map.Entry;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
@@ -27,9 +35,12 @@ import org.jclouds.blobstore.BlobStore;
 import org.jclouds.blobstore.BlobStoreContext;
 import org.jclouds.logging.slf4j.config.SLF4JLoggingModule;
 
+import com.google.common.base.Charsets;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.io.Files;
 
 import blue.endless.jankson.Jankson;
 import blue.endless.jankson.JsonObject;
@@ -49,6 +60,13 @@ public class JortageProxy {
 	public static void main(String[] args) throws Exception {
 		reloadConfig();
 
+		File restore = new File("data.dat.gz");
+		File mv = new File("data.mv");
+		boolean doRestore = false;
+		if (!mv.exists() && restore.exists()) {
+			doRestore = true;
+		}
+
 		MVStore store = new MVStore.Builder()
 				.fileName("data.mv")
 				.compress()
@@ -56,6 +74,37 @@ public class JortageProxy {
 		MVMap<String, String> paths = store.openMap("paths", new MVMap.Builder<String, String>()
 				.keyType(new StringDataType())
 				.valueType(new StringDataType()));
+		if (doRestore) {
+			int recovered = 0;
+			int total = 0;
+			boolean success = false;
+			try (DataInputStream dis = new DataInputStream(new GZIPInputStream(new FileInputStream(restore)))) {
+				int count = dis.readInt();
+				total = count;
+				for (int i = 0; i < count; i++) {
+					byte[] key = new byte[dis.readInt()];
+					dis.readFully(key);
+					byte[] val = new byte[dis.readInt()];
+					dis.readFully(val);
+					String keyStr = new String(key, Charsets.UTF_8);
+					String valStr = new String(val, Charsets.UTF_8);
+					paths.put(keyStr, valStr);
+					recovered++;
+				}
+				System.err.println("Recovery successful! Recovered "+recovered+" entries.");
+				success = true;
+			} catch (IOException e) {
+				e.printStackTrace();
+				if (recovered == 0) {
+					System.err.println("Recovery failed! No data could be restored!");
+				} else {
+					System.err.println("Recovery failed; only "+recovered+"/"+total+" entries could be restored!");
+				}
+			}
+			if (success) {
+				restore.delete();
+			}
+		}
 
 		S3Proxy s3Proxy = S3Proxy.builder()
 				.awsAuthentication(AuthenticationType.AWS_V4, "DUMMY", "DUMMY")
@@ -115,9 +164,58 @@ public class JortageProxy {
 		redir.start();
 		System.err.println("Redirector listening on localhost:23279");
 
+		SimpleDateFormat dateFormat = new SimpleDateFormat("YYYY-MM-DD_HH-mm-ss");
+
+		int i = 0;
 		while (true) {
 			Thread.sleep(15000);
+			System.err.println("Committing database...");
 			store.commit();
+			System.err.println("Commit successful.");
+			i++;
+			// every 10 minutes (roughly)
+			if (i % 40 == 0) {
+				System.err.println("Creating backup...");
+				File backups = new File("backups");
+				if (!backups.exists()) {
+					backups.mkdir();
+					Files.write(
+						  "These are gzipped dumps of the contents of `data.mv` in an ad-hoc format\n"
+						+ "that can be restored by jortage-proxy in the event of data loss. To cause\n"
+						+ "such a restore, delete `data.mv` and copy one of these files to `data.dat.gz`\n"
+						+ "in the jortage-proxy directory. Upon start, jortage-proxy will load the\n"
+						+ "data in the dump into the newly-created `data.mv` and then delete `data.dat.gz`.",
+						new File(backups, "README.txt"), Charsets.UTF_8);
+				}
+				File f = new File("backups/"+dateFormat.format(new Date())+".dat.gz");
+				try (DataOutputStream dos = new DataOutputStream(new GZIPOutputStream(new FileOutputStream(f)))) {
+					List<Map.Entry<String, String>> entries = Lists.newArrayList(paths.entrySet());
+					dos.writeInt(entries.size());
+					for (Map.Entry<String, String> en : entries) {
+						byte[] keyBys = en.getKey().getBytes(Charsets.UTF_8);
+						byte[] valBys = en.getValue().getBytes(Charsets.UTF_8);
+						dos.writeInt(keyBys.length);
+						dos.write(keyBys);
+						dos.writeInt(valBys.length);
+						dos.write(valBys);
+					}
+					System.err.println("Backup successful.");
+				} catch (IOException e) {
+					e.printStackTrace();
+					System.err.println("Failed to write backup!");
+				}
+			}
+			// every hour (roughly)
+			if (i % 240 == 0) {
+				System.err.println("Compacting database...");
+				long size = store.getFileStore().size();
+				if (store.compactRewriteFully()) {
+					long newSize = store.getFileStore().size();
+					System.err.println("Compaction successful. Saved "+(size-newSize)/1024+"KiB.");
+				} else {
+					System.err.println("Nothing to compact.");
+				}
+			}
 		}
 	}
 
