@@ -143,9 +143,6 @@ public class JortageProxy {
 					response.sendError(400);
 					return;
 				} else {
-					for (Map.Entry<String, String> en : paths.entrySet()) {
-						System.out.println(en);
-					}
 					String identity = split.get(0);
 					String name = split.get(1);
 					String key = buildKey(identity, name);
