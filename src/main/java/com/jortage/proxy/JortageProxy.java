@@ -107,7 +107,7 @@ public class JortageProxy {
 		}
 
 		S3Proxy s3Proxy = S3Proxy.builder()
-				.awsAuthentication(AuthenticationType.AWS_V4, "DUMMY", "DUMMY")
+				.awsAuthentication(AuthenticationType.AWS_V2_OR_V4, "DUMMY", "DUMMY")
 				.endpoint(URI.create("http://localhost:23278"))
 				.build();
 
