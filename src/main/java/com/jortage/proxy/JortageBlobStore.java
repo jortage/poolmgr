@@ -18,8 +18,10 @@ import org.jclouds.blobstore.domain.BlobMetadata;
 import org.jclouds.blobstore.domain.ContainerAccess;
 import org.jclouds.blobstore.domain.MultipartPart;
 import org.jclouds.blobstore.domain.MultipartUpload;
+import org.jclouds.blobstore.domain.MutableBlobMetadata;
 import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
+import org.jclouds.blobstore.domain.internal.MutableBlobMetadataImpl;
 import org.jclouds.blobstore.options.CopyOptions;
 import org.jclouds.blobstore.options.CreateContainerOptions;
 import org.jclouds.blobstore.options.GetOptions;
@@ -85,6 +87,26 @@ public class JortageBlobStore extends ForwardingBlobStore {
 	}
 
 	@Override
+	public void downloadBlob(String container, String name, File destination) {
+		delegate().downloadBlob(bucket, map(container, name), destination);
+	}
+
+	@Override
+	public void downloadBlob(String container, String name, File destination, ExecutorService executor) {
+		delegate().downloadBlob(bucket, map(container, name), destination, executor);
+	}
+
+	@Override
+	public InputStream streamBlob(String container, String name) {
+		return delegate().streamBlob(bucket, map(container, name));
+	}
+
+	@Override
+	public InputStream streamBlob(String container, String name, ExecutorService executor) {
+		return delegate().streamBlob(bucket, map(container, name), executor);
+	}
+
+	@Override
 	public BlobAccess getBlobAccess(String container, String name) {
 		return BlobAccess.PUBLIC_READ;
 	}
@@ -126,6 +148,21 @@ public class JortageBlobStore extends ForwardingBlobStore {
 	}
 
 	@Override
+	public int getMaximumNumberOfParts() {
+		return delegate().getMaximumNumberOfParts();
+	}
+
+	@Override
+	public long getMinimumMultipartPartSize() {
+		return delegate().getMinimumMultipartPartSize();
+	}
+
+	@Override
+	public long getMaximumMultipartPartSize() {
+		return delegate().getMaximumMultipartPartSize();
+	}
+
+	@Override
 	public String putBlob(String container, Blob blob) {
 		checkContainer(container);
 		File tempFile = null;
@@ -151,7 +188,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 						.payload(payload)
 						.userMetadata(blob.getMetadata().getUserMetadata())
 						.build();
-				String etag = delegate().putBlob(bucket, blob2, new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ));
+				String etag = delegate().putBlob(bucket, blob2, new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ).multipart());
 				paths.put(buildKey(blob.getMetadata().getName()), hash);
 				return etag;
 			}
@@ -163,8 +200,40 @@ public class JortageBlobStore extends ForwardingBlobStore {
 	}
 
 	@Override
+	public MultipartUpload initiateMultipartUpload(String container, BlobMetadata blobMetadata, PutOptions options) {
+		MutableBlobMetadata mbm = new MutableBlobMetadataImpl(blobMetadata);
+		mbm.setContainer(bucket);
+		mbm.setName(map(blobMetadata.getContainer(), blobMetadata.getName()));
+		return delegate().initiateMultipartUpload(bucket, mbm, options);
+	}
+
+	@Override
+	public void abortMultipartUpload(MultipartUpload mpu) {
+		delegate().abortMultipartUpload(mpu);
+	}
+
+	@Override
+	public String completeMultipartUpload(MultipartUpload mpu, List<MultipartPart> parts) {
+		return delegate().completeMultipartUpload(mpu, parts);
+	}
+
+	@Override
+	public MultipartPart uploadMultipartPart(MultipartUpload mpu, int partNumber, Payload payload) {
+		return delegate().uploadMultipartPart(mpu, partNumber, payload);
+	}
+
+	@Override
+	public List<MultipartPart> listMultipartUpload(MultipartUpload mpu) {
+		return delegate().listMultipartUpload(mpu);
+	}
+
+	@Override
+	public List<MultipartUpload> listMultipartUploads(String container) {
+		return delegate().listMultipartUploads(bucket);
+	}
+
+	@Override
 	public String putBlob(String containerName, Blob blob, PutOptions putOptions) {
-		if (putOptions.isMultipart()) throw new UnsupportedOperationException("multipart blobs not supported");
 		return putBlob(containerName, blob);
 	}
 
@@ -238,54 +307,4 @@ public class JortageBlobStore extends ForwardingBlobStore {
 		throw new UnsupportedOperationException("Read-only BlobStore");
 	}
 
-	@Override
-	public MultipartUpload initiateMultipartUpload(String container, BlobMetadata blobMetadata, PutOptions options) {
-		throw new UnsupportedOperationException("Read-only BlobStore");
-	}
-
-	@Override
-	public void abortMultipartUpload(MultipartUpload mpu) {
-		throw new UnsupportedOperationException("Read-only BlobStore");
-	}
-
-	@Override
-	public String completeMultipartUpload(MultipartUpload mpu, List<MultipartPart> parts) {
-		throw new UnsupportedOperationException("Read-only BlobStore");
-	}
-
-	@Override
-	public MultipartPart uploadMultipartPart(MultipartUpload mpu, int partNumber, Payload payload) {
-		throw new UnsupportedOperationException("Read-only BlobStore");
-	}
-
-	@Override
-	public List<MultipartPart> listMultipartUpload(MultipartUpload mpu) {
-		throw new UnsupportedOperationException("Read-only BlobStore");
-	}
-
-	// TODO: should ReadOnlyBlobStore allow listing parts and uploads?
-	@Override
-	public List<MultipartUpload> listMultipartUploads(String container) {
-		throw new UnsupportedOperationException("Read-only BlobStore");
-	}
-
-	@Override
-	public void downloadBlob(String container, String name, File destination) {
-		throw new UnsupportedOperationException();
-	}
-
-	@Override
-	public void downloadBlob(String container, String name, File destination, ExecutorService executor) {
-		throw new UnsupportedOperationException();
-	}
-
-	@Override
-	public InputStream streamBlob(String container, String name) {
-		throw new UnsupportedOperationException();
-	}
-
-	@Override
-	public InputStream streamBlob(String container, String name, ExecutorService executor) {
-		throw new UnsupportedOperationException();
-	}
 }

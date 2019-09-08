@@ -109,6 +109,7 @@ public class JortageProxy {
 		S3Proxy s3Proxy = S3Proxy.builder()
 				.awsAuthentication(AuthenticationType.AWS_V2_OR_V4, "DUMMY", "DUMMY")
 				.endpoint(URI.create("http://localhost:23278"))
+				.v4MaxNonChunkedRequestSize(128*1024*1024)
 				.build();
 
 		s3Proxy.setBlobStoreLocator(new BlobStoreLocator() {
@@ -170,7 +171,8 @@ public class JortageProxy {
 			System.err.println("Commit successful.");
 			i++;
 			// every 10 minutes (roughly)
-			if (i % 40 == 0) {
+			// FIXME this is causing OOMEs in production
+			if (false && i % 40 == 0) {
 				System.err.println("Creating backup...");
 				File backups = new File("backups");
 				if (!backups.exists()) {
@@ -222,7 +224,6 @@ public class JortageProxy {
 			bucket = ((JsonPrimitive)config.getObject("backend").get("bucket")).asString();
 			publicHost = ((JsonPrimitive)config.getObject("backend").get("publicHost")).asString();
 			Properties props = new Properties();
-			props.put("jclouds.wire", "debug");
 			backingBlobStore = ContextBuilder.newBuilder("s3")
 					.credentials(((JsonPrimitive)config.getObject("backend").get("accessKeyId")).asString(), ((JsonPrimitive)config.getObject("backend").get("secretAccessKey")).asString())
 					.modules(ImmutableList.of(new SLF4JLoggingModule()))

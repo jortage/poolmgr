@@ -10,6 +10,9 @@
 
   <logger name="org.eclipse.jetty" level="${JETTY_LOG_LEVEL:-off}" />
   <logger name="org.gaul.shaded.org.eclipse.jetty" level="${JETTY_LOG_LEVEL:-off}" />
+  <logger name="org.jclouds" level="${JCLOUDS_LOG_LEVEL:-off}" />
+  <logger name="jclouds.wire" level="${JCLOUDS_LOG_LEVEL:-off}" />
+  <logger name="jclouds.headers" level="${JCLOUDS_LOG_LEVEL:-off}" />
 
   <root level="${LOG_LEVEL:-off}">
     <appender-ref ref="STDOUT" />
