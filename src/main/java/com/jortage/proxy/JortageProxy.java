@@ -166,9 +166,7 @@ public class JortageProxy {
 		int i = 0;
 		while (true) {
 			Thread.sleep(15000);
-			System.err.println("Committing database...");
 			store.commit();
-			System.err.println("Commit successful.");
 			i++;
 			// every 10 minutes (roughly)
 			// FIXME this is causing OOMEs in production
@@ -201,17 +199,6 @@ public class JortageProxy {
 				} catch (IOException e) {
 					e.printStackTrace();
 					System.err.println("Failed to write backup!");
-				}
-			}
-			// every hour (roughly)
-			if (i % 240 == 0) {
-				System.err.println("Compacting database...");
-				long size = store.getFileStore().size();
-				if (store.compactRewriteFully()) {
-					long newSize = store.getFileStore().size();
-					System.err.println("Compaction successful. Saved "+(size-newSize)/1024+"KiB.");
-				} else {
-					System.err.println("Nothing to compact.");
 				}
 			}
 		}
