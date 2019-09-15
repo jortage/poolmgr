@@ -109,7 +109,6 @@ public class JortageProxy {
 		S3Proxy s3Proxy = S3Proxy.builder()
 				.awsAuthentication(AuthenticationType.AWS_V2_OR_V4, "DUMMY", "DUMMY")
 				.endpoint(URI.create("http://localhost:23278"))
-				.v4MaxNonChunkedRequestSize(128*1024*1024)
 				.build();
 
 		s3Proxy.setBlobStoreLocator(new BlobStoreLocator() {
