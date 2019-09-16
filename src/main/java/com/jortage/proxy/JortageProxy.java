@@ -6,7 +6,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.net.URI;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -23,7 +22,9 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.handler.AbstractHandler;
+import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.gaul.s3proxy.AuthenticationType;
 import org.gaul.s3proxy.BlobStoreLocator;
 import org.gaul.s3proxy.S3Proxy;
@@ -69,6 +70,8 @@ public class JortageProxy {
 
 		MVStore store = new MVStore.Builder()
 				.fileName("data.mv")
+				.cacheConcurrency(4)
+				.cacheSize(32)
 				.compress()
 				.open();
 		MVMap<String, String> paths = store.openMap("paths", new MVMap.Builder<String, String>()
@@ -109,6 +112,8 @@ public class JortageProxy {
 		S3Proxy s3Proxy = S3Proxy.builder()
 				.awsAuthentication(AuthenticationType.AWS_V2_OR_V4, "DUMMY", "DUMMY")
 				.endpoint(URI.create("http://localhost:23278"))
+				.jettyMaxThreads(4)
+				.v4MaxNonChunkedRequestSize(128L*1024L*1024L)
 				.build();
 
 		s3Proxy.setBlobStoreLocator(new BlobStoreLocator() {
@@ -127,7 +132,13 @@ public class JortageProxy {
 		s3Proxy.start();
 		System.err.println("S3 listening on localhost:23278");
 
-		Server redir = new Server(new InetSocketAddress("localhost", 23279));
+		QueuedThreadPool pool = new QueuedThreadPool(12);
+		pool.setName("Redir-Jetty");
+		Server redir = new Server(pool);
+		ServerConnector conn = new ServerConnector(redir);
+		conn.setHost("localhost");
+		conn.setPort(23279);
+		redir.addConnector(conn);
 		redir.setHandler(new AbstractHandler() {
 
 			@Override
