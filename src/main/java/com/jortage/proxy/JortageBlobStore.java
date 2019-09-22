@@ -6,8 +6,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ExecutorService;
+
+import javax.sql.DataSource;
 
 import org.jclouds.blobstore.BlobStore;
 import org.jclouds.blobstore.BlobStoreContext;
@@ -35,24 +36,22 @@ import org.jclouds.io.payloads.FilePayload;
 import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
+import com.google.common.hash.HashCode;
 import com.google.common.hash.Hashing;
 import com.google.common.hash.HashingOutputStream;
 import com.google.common.io.ByteStreams;
+import com.google.common.io.CountingOutputStream;
 
 public class JortageBlobStore extends ForwardingBlobStore {
 	private final String identity;
 	private final String bucket;
-	private final Map<String, String> paths;
+	private final DataSource dataSource;
 
-	public JortageBlobStore(BlobStore blobStore, String bucket, String identity, Map<String, String> paths) {
+	public JortageBlobStore(BlobStore blobStore, String bucket, String identity, DataSource dataSource) {
 		super(blobStore);
 		this.bucket = bucket;
 		this.identity = identity;
-		this.paths = paths;
-	}
-
-	private String buildKey(String name) {
-		return JortageProxy.buildKey(identity, name);
+		this.dataSource = dataSource;
 	}
 
 	private void checkContainer(String container) {
@@ -61,15 +60,9 @@ public class JortageBlobStore extends ForwardingBlobStore {
 		}
 	}
 
-	private String mapHash(String container, String name) {
+	private String getMapPath(String container, String name) {
 		checkContainer(container);
-		String hash = paths.get(buildKey(name));
-		if (hash == null) throw new IllegalArgumentException("Not found");
-		return hash;
-	}
-
-	private String map(String container, String name) {
-		return JortageProxy.hashToPath(mapHash(container, name));
+		return JortageProxy.hashToPath(Queries.getMap(dataSource, container, name).toString());
 	}
 
 	@Override
@@ -84,32 +77,32 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public Blob getBlob(String container, String name) {
-		return delegate().getBlob(bucket, map(container, name));
+		return delegate().getBlob(bucket, getMapPath(container, name));
 	}
 
 	@Override
 	public Blob getBlob(String container, String name, GetOptions getOptions) {
-		return delegate().getBlob(bucket, map(container, name), getOptions);
+		return delegate().getBlob(bucket, getMapPath(container, name), getOptions);
 	}
 
 	@Override
 	public void downloadBlob(String container, String name, File destination) {
-		delegate().downloadBlob(bucket, map(container, name), destination);
+		delegate().downloadBlob(bucket, getMapPath(container, name), destination);
 	}
 
 	@Override
 	public void downloadBlob(String container, String name, File destination, ExecutorService executor) {
-		delegate().downloadBlob(bucket, map(container, name), destination, executor);
+		delegate().downloadBlob(bucket, getMapPath(container, name), destination, executor);
 	}
 
 	@Override
 	public InputStream streamBlob(String container, String name) {
-		return delegate().streamBlob(bucket, map(container, name));
+		return delegate().streamBlob(bucket, getMapPath(container, name));
 	}
 
 	@Override
 	public InputStream streamBlob(String container, String name, ExecutorService executor) {
-		return delegate().streamBlob(bucket, map(container, name), executor);
+		return delegate().streamBlob(bucket, getMapPath(container, name), executor);
 	}
 
 	@Override
@@ -140,12 +133,12 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public boolean blobExists(String container, String name) {
-		return delegate().blobExists(bucket, map(container, name));
+		return delegate().blobExists(bucket, getMapPath(container, name));
 	}
 
 	@Override
 	public BlobMetadata blobMetadata(String container, String name) {
-		return delegate().blobMetadata(bucket, map(container, name));
+		return delegate().blobMetadata(bucket, getMapPath(container, name));
 	}
 
 	@Override
@@ -176,26 +169,28 @@ public class JortageBlobStore extends ForwardingBlobStore {
 			File f = File.createTempFile("jortage-proxy-", ".dat");
 			tempFile = f;
 			String contentType = blob.getPayload().getContentMetadata().getContentType();
-			String hash;
+			HashCode hash;
 			try (InputStream is = blob.getPayload().openStream();
 					FileOutputStream fos = new FileOutputStream(f)) {
 				HashingOutputStream hos = new HashingOutputStream(Hashing.sha512(), fos);
 				ByteStreams.copy(is, hos);
-				hash = hos.hash().toString();
+				hash = hos.hash();
 			}
+			String hashString = hash.toString();
 			try (Payload payload = new FilePayload(f)) {
 				payload.getContentMetadata().setContentType(contentType);
-				if (delegate().blobExists(bucket, JortageProxy.hashToPath(hash))) {
-					String etag = delegate().blobMetadata(bucket, JortageProxy.hashToPath(hash)).getETag();
-					paths.put(buildKey(blob.getMetadata().getName()), hash);
+				if (delegate().blobExists(bucket, JortageProxy.hashToPath(hashString))) {
+					String etag = delegate().blobMetadata(bucket, JortageProxy.hashToPath(hashString)).getETag();
+					Queries.putMap(dataSource, identity, blob.getMetadata().getName(), hash);
 					return etag;
 				}
-				Blob blob2 = blobBuilder(JortageProxy.hashToPath(hash))
+				Blob blob2 = blobBuilder(JortageProxy.hashToPath(hashString))
 						.payload(payload)
 						.userMetadata(blob.getMetadata().getUserMetadata())
 						.build();
 				String etag = delegate().putBlob(bucket, blob2, new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ).multipart());
-				paths.put(buildKey(blob.getMetadata().getName()), hash);
+				Queries.putMap(dataSource, identity, blob.getMetadata().getName(), hash);
+				Queries.putFilesize(dataSource, hash, f.length());
 				return etag;
 			}
 		} catch (IOException e) {
@@ -208,33 +203,33 @@ public class JortageBlobStore extends ForwardingBlobStore {
 	@Override
 	public String copyBlob(String fromContainer, String fromName, String toContainer, String toName, CopyOptions options) {
 		// javadoc says options are ignored, so we ignore them too
+		checkContainer(fromContainer);
 		checkContainer(toContainer);
-		String hash = mapHash(fromContainer, fromName);
-		paths.put(buildKey(toName), hash);
-		return blobMetadata(bucket, JortageProxy.hashToPath(hash)).getETag();
+		HashCode hash = Queries.getMap(dataSource, identity, fromName);
+		Queries.putMap(dataSource, identity, toName, hash);
+		return blobMetadata(bucket, JortageProxy.hashToPath(hash.toString())).getETag();
 	}
 
 	@Override
 	public MultipartUpload initiateMultipartUpload(String container, BlobMetadata blobMetadata, PutOptions options) {
 		checkContainer(container);
 		MutableBlobMetadata mbm = new MutableBlobMetadataImpl(blobMetadata);
-		String name = "multitmp/"+identity+"-"+System.currentTimeMillis()+"-"+System.nanoTime();
-		mbm.setName(name);
+		String tempfile = "multitmp/"+identity+"-"+System.currentTimeMillis()+"-"+System.nanoTime();
+		mbm.setName(tempfile);
 		mbm.getUserMetadata().put("jortage-creator", identity);
 		mbm.getUserMetadata().put("jortage-originalname", blobMetadata.getName());
-		paths.put("multipart:"+buildKey(blobMetadata.getName()), name);
-		paths.put("multipart-rev:"+name, blobMetadata.getName());
+		Queries.putMultipart(dataSource, identity, blobMetadata.getName(), tempfile);
 		return delegate().initiateMultipartUpload(bucket, mbm, new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ));
 	}
 
 	private MultipartUpload mask(MultipartUpload mpu) {
 		checkContainer(mpu.containerName());
-		return MultipartUpload.create(bucket, Preconditions.checkNotNull(paths.get("multipart:"+buildKey(mpu.blobName()))), mpu.id(), mpu.blobMetadata(), new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ));
+		return MultipartUpload.create(bucket, Queries.getMultipart(dataSource, identity, mpu.blobName()), mpu.id(), mpu.blobMetadata(), new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ));
 	}
 
 	private MultipartUpload revmask(MultipartUpload mpu) {
 		checkContainer(mpu.containerName());
-		return MultipartUpload.create(bucket, Preconditions.checkNotNull(paths.get("multipart-rev:"+mpu.blobName())), mpu.id(), mpu.blobMetadata(), new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ));
+		return MultipartUpload.create(bucket, Queries.getMultipartRev(dataSource, mpu.blobName()), mpu.id(), mpu.blobMetadata(), new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ));
 	}
 
 	@Override
@@ -244,15 +239,16 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public String completeMultipartUpload(MultipartUpload mpu, List<MultipartPart> parts) {
-		String origKey = buildKey(mpu.blobName());
 		mpu = mask(mpu);
 		// TODO this is a bit of a hack and isn't very efficient
 		String etag = delegate().completeMultipartUpload(mpu, parts);
 		try (InputStream stream = delegate().getBlob(mpu.containerName(), mpu.blobName()).getPayload().openStream()) {
-			HashingOutputStream hos = new HashingOutputStream(Hashing.sha512(), ByteStreams.nullOutputStream());
+			CountingOutputStream counter = new CountingOutputStream(ByteStreams.nullOutputStream());
+			HashingOutputStream hos = new HashingOutputStream(Hashing.sha512(), counter);
 			ByteStreams.copy(stream, hos);
-			String hash = hos.hash().toString();
-			String path = JortageProxy.hashToPath(hash);
+			HashCode hash = hos.hash();
+			String hashStr = hash.toString();
+			String path = JortageProxy.hashToPath(hashStr);
 			// don't fall afoul of request rate limits
 			Thread.sleep(500);
 			BlobMetadata meta = delegate().blobMetadata(mpu.containerName(), mpu.blobName());
@@ -265,9 +261,9 @@ public class JortageBlobStore extends ForwardingBlobStore {
 				Thread.sleep(500);
 				etag = delegate().blobMetadata(bucket, path).getETag();
 			}
-			paths.put(buildKey(Preconditions.checkNotNull(meta.getUserMetadata().get("jortage-originalname"))), hash);
-			paths.remove("multipart:"+origKey);
-			paths.remove("multipart-rev:"+mpu.blobName());
+			Queries.putMap(dataSource, identity, Preconditions.checkNotNull(meta.getUserMetadata().get("jortage-originalname")), hash);
+			Queries.putFilesize(dataSource, hash, counter.getCount());
+			Queries.removeMultipart(dataSource, mpu.blobName());
 			Thread.sleep(500);
 			delegate().removeBlob(mpu.containerName(), mpu.blobName());
 		} catch (IOException e) {

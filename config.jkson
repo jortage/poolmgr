@@ -6,6 +6,13 @@
 		bucket: "mybucket"
 		publicHost: "https://sfo2.digitaloceanspaces.com/mybucket"
 	}
+	mysql: {
+		host: "localhost"
+		port: 3306
+		user: "jortage"
+		pass: "password"
+		database: "jortage"
+	}
 	users: {
 		// ACCESS_KEY_ID: "SECRET_ACCESS_KEY"
 		test: "test"
