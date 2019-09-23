@@ -140,7 +140,7 @@ public class JortageProxy {
 			}
 			dataSource = new MariaDbPoolDataSource("jdbc:mariadb://"+pesc.escape(sqlHost)+":"+sqlPort+"/"+pesc.escape(sqlDb)+"?user="+esc.escape(sqlUser)+"&password="+esc.escape(sqlPass)+"&autoReconnect=true");
 			try (Connection c = dataSource.getConnection()) {
-				execOneshot(c, "CREATE TABLE `name_map` (\n" +
+				execOneshot(c, "CREATE TABLE IF NOT EXISTS `name_map` (\n" +
 						"  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n" +
 						"  `identity` VARCHAR(255) NOT NULL,\n" +
 						"  `name` VARCHAR(255) NOT NULL,\n" +
@@ -149,7 +149,7 @@ public class JortageProxy {
 						"  UNIQUE INDEX `forward` (`identity`, `name`),\n" +
 						"  INDEX `reverse` (`hash`)\n" +
 						") ROW_FORMAT=COMPRESSED;");
-				execOneshot(c, "CREATE TABLE `multipart_uploads` (\n" +
+				execOneshot(c, "CREATE TABLE IF NOT EXISTS `multipart_uploads` (\n" +
 						"  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n" +
 						"  `identity` VARCHAR(255) NOT NULL,\n" +
 						"  `name` VARCHAR(255) NOT NULL,\n" +
@@ -158,7 +158,7 @@ public class JortageProxy {
 						"  UNIQUE INDEX `forward` (`identity`, `name`),\n" +
 						"  UNIQUE INDEX `reverse` (`tempfile`)\n" +
 						") ROW_FORMAT=COMPRESSED;");
-				execOneshot(c, "CREATE TABLE `filesizes` (\n" +
+				execOneshot(c, "CREATE TABLE IF NOT EXISTS `filesizes` (\n" +
 						"  `hash` BINARY(64) NOT NULL,\n" +
 						"  `size` BIGINT UNSIGNED NOT NULL,\n" +
 						"  PRIMARY KEY (`hash`)\n" +
