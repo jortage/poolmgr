@@ -5,7 +5,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 
 import javax.sql.DataSource;
@@ -30,6 +32,8 @@ import org.jclouds.blobstore.options.ListContainerOptions;
 import org.jclouds.blobstore.options.PutOptions;
 import org.jclouds.blobstore.util.ForwardingBlobStore;
 import org.jclouds.domain.Location;
+import org.jclouds.domain.LocationScope;
+import org.jclouds.domain.internal.LocationImpl;
 import org.jclouds.io.Payload;
 import org.jclouds.io.payloads.FilePayload;
 
@@ -43,12 +47,15 @@ import com.google.common.io.ByteStreams;
 import com.google.common.io.CountingOutputStream;
 
 public class JortageBlobStore extends ForwardingBlobStore {
+	private final BlobStore dumpsStore;
 	private final String identity;
 	private final String bucket;
 	private final DataSource dataSource;
 
-	public JortageBlobStore(BlobStore blobStore, String bucket, String identity, DataSource dataSource) {
+	public JortageBlobStore(BlobStore blobStore, BlobStore dumpsStore, String bucket, String identity, DataSource dataSource) {
 		super(blobStore);
+		this.dumpsStore = dumpsStore;
+		dumpsStore.createContainerInLocation(null, identity);
 		this.bucket = bucket;
 		this.identity = identity;
 		this.dataSource = dataSource;
@@ -65,6 +72,10 @@ public class JortageBlobStore extends ForwardingBlobStore {
 		return JortageProxy.hashToPath(Queries.getMap(dataSource, container, name).toString());
 	}
 
+	private boolean isDump(String name) {
+		return name.startsWith("backups/dumps") || name.startsWith("/backups/dumps");
+	}
+
 	@Override
 	public BlobStoreContext getContext() {
 		return delegate().getContext();
@@ -72,41 +83,69 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public BlobBuilder blobBuilder(String name) {
+		if (isDump(name)) return dumpsStore.blobBuilder(name);
 		return delegate().blobBuilder(name);
 	}
 
 	@Override
 	public Blob getBlob(String container, String name) {
+		if (isDump(name)) {
+			checkContainer(container);
+			return dumpsStore.getBlob(container, name);
+		}
 		return delegate().getBlob(bucket, getMapPath(container, name));
 	}
 
 	@Override
 	public Blob getBlob(String container, String name, GetOptions getOptions) {
+		if (isDump(name)) {
+			checkContainer(container);
+			return dumpsStore.getBlob(container, name, getOptions);
+		}
 		return delegate().getBlob(bucket, getMapPath(container, name), getOptions);
 	}
 
 	@Override
 	public void downloadBlob(String container, String name, File destination) {
+		if (isDump(name)) {
+			checkContainer(container);
+			dumpsStore.downloadBlob(container, name, destination);
+			return;
+		}
 		delegate().downloadBlob(bucket, getMapPath(container, name), destination);
 	}
 
 	@Override
 	public void downloadBlob(String container, String name, File destination, ExecutorService executor) {
+		if (isDump(name)) {
+			checkContainer(container);
+			dumpsStore.downloadBlob(container, name, destination, executor);
+			return;
+		}
 		delegate().downloadBlob(bucket, getMapPath(container, name), destination, executor);
 	}
 
 	@Override
 	public InputStream streamBlob(String container, String name) {
+		if (isDump(name)) {
+			checkContainer(container);
+			return dumpsStore.streamBlob(container, name);
+		}
 		return delegate().streamBlob(bucket, getMapPath(container, name));
 	}
 
 	@Override
 	public InputStream streamBlob(String container, String name, ExecutorService executor) {
+		if (isDump(name)) {
+			checkContainer(container);
+			return dumpsStore.streamBlob(container, name, executor);
+		}
 		return delegate().streamBlob(bucket, getMapPath(container, name), executor);
 	}
 
 	@Override
 	public BlobAccess getBlobAccess(String container, String name) {
+		checkContainer(container);
 		return BlobAccess.PUBLIC_READ;
 	}
 
@@ -128,16 +167,25 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public ContainerAccess getContainerAccess(String container) {
+		checkContainer(container);
 		return ContainerAccess.PUBLIC_READ;
 	}
 
 	@Override
 	public boolean blobExists(String container, String name) {
+		if (isDump(name)) {
+			checkContainer(container);
+			return dumpsStore.blobExists(container, name);
+		}
 		return delegate().blobExists(bucket, getMapPath(container, name));
 	}
 
 	@Override
 	public BlobMetadata blobMetadata(String container, String name) {
+		if (isDump(name)) {
+			checkContainer(container);
+			return dumpsStore.blobMetadata(container, name);
+		}
 		return delegate().blobMetadata(bucket, getMapPath(container, name));
 	}
 
@@ -164,6 +212,9 @@ public class JortageBlobStore extends ForwardingBlobStore {
 	@Override
 	public String putBlob(String container, Blob blob) {
 		checkContainer(container);
+		if (isDump(blob.getMetadata().getName())) {
+			return dumpsStore.putBlob(container, blob);
+		}
 		File tempFile = null;
 		try {
 			File f = File.createTempFile("jortage-proxy-", ".dat");
@@ -189,6 +240,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 						.userMetadata(blob.getMetadata().getUserMetadata())
 						.build();
 				String etag = delegate().putBlob(bucket, blob2, new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ).multipart());
+				Queries.putPendingBackup(dataSource, hash);
 				Queries.putMap(dataSource, identity, blob.getMetadata().getName(), hash);
 				Queries.putFilesize(dataSource, hash, f.length());
 				return etag;
@@ -202,9 +254,13 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public String copyBlob(String fromContainer, String fromName, String toContainer, String toName, CopyOptions options) {
-		// javadoc says options are ignored, so we ignore them too
 		checkContainer(fromContainer);
 		checkContainer(toContainer);
+		if (isDump(fromName)) {
+			if (!isDump(toName)) throw new UnsupportedOperationException();
+			return dumpsStore.copyBlob(fromContainer, fromName, toContainer, toName, options);
+		}
+		// javadoc says options are ignored, so we ignore them too
 		HashCode hash = Queries.getMap(dataSource, identity, fromName);
 		Queries.putMap(dataSource, identity, toName, hash);
 		return blobMetadata(bucket, JortageProxy.hashToPath(hash.toString())).getETag();
@@ -213,6 +269,9 @@ public class JortageBlobStore extends ForwardingBlobStore {
 	@Override
 	public MultipartUpload initiateMultipartUpload(String container, BlobMetadata blobMetadata, PutOptions options) {
 		checkContainer(container);
+		if (isDump(blobMetadata.getName())) {
+			return dumpsStore.initiateMultipartUpload(container, blobMetadata, options);
+		}
 		MutableBlobMetadata mbm = new MutableBlobMetadataImpl(blobMetadata);
 		String tempfile = "multitmp/"+identity+"-"+System.currentTimeMillis()+"-"+System.nanoTime();
 		mbm.setName(tempfile);
@@ -234,11 +293,20 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public void abortMultipartUpload(MultipartUpload mpu) {
+		if (isDump(mpu.blobName())) {
+			checkContainer(mpu.containerName());
+			dumpsStore.abortMultipartUpload(mpu);
+			return;
+		}
 		delegate().abortMultipartUpload(mask(mpu));
 	}
 
 	@Override
 	public String completeMultipartUpload(MultipartUpload mpu, List<MultipartPart> parts) {
+		if (isDump(mpu.blobName())) {
+			checkContainer(mpu.containerName());
+			return dumpsStore.completeMultipartUpload(mpu, parts);
+		}
 		mpu = mask(mpu);
 		// TODO this is a bit of a hack and isn't very efficient
 		String etag = delegate().completeMultipartUpload(mpu, parts);
@@ -257,6 +325,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 				etag = delegate().copyBlob(mpu.containerName(), mpu.blobName(), bucket, path, CopyOptions.builder().contentMetadata(meta.getContentMetadata()).build());
 				Thread.sleep(500);
 				delegate().setBlobAccess(bucket, path, BlobAccess.PUBLIC_READ);
+				Queries.putPendingBackup(dataSource, hash);
 			} else {
 				Thread.sleep(500);
 				etag = delegate().blobMetadata(bucket, path).getETag();
@@ -276,11 +345,19 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public MultipartPart uploadMultipartPart(MultipartUpload mpu, int partNumber, Payload payload) {
+		if (isDump(mpu.blobName())) {
+			checkContainer(mpu.containerName());
+			return dumpsStore.uploadMultipartPart(mpu, partNumber, payload);
+		}
 		return delegate().uploadMultipartPart(mask(mpu), partNumber, payload);
 	}
 
 	@Override
 	public List<MultipartPart> listMultipartUpload(MultipartUpload mpu) {
+		if (isDump(mpu.blobName())) {
+			checkContainer(mpu.containerName());
+			return dumpsStore.listMultipartUpload(mpu);
+		}
 		return delegate().listMultipartUpload(mask(mpu));
 	}
 
@@ -293,6 +370,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 				out.add(revmask(mpu));
 			}
 		}
+		out.addAll(dumpsStore.listMultipartUploads(container));
 		return out;
 	}
 
@@ -302,15 +380,43 @@ public class JortageBlobStore extends ForwardingBlobStore {
 	}
 
 	@Override
-	public boolean createContainerInLocation(Location location,
-			String container) {
+	public void removeBlob(String container, String name) {
+		if (isDump(name)) {
+			checkContainer(container);
+			dumpsStore.removeBlob(container, name);
+			return;
+		}
 		throw new UnsupportedOperationException("Read-only BlobStore");
+	}
+
+	@Override
+	public void removeBlobs(String container, Iterable<String> iterable) {
+		for (String s : iterable) {
+			removeBlob(container, s);
+		}
+	}
+
+	@Override
+	public Set<? extends Location> listAssignableLocations() {
+		return Collections.singleton(new LocationImpl(LocationScope.PROVIDER, "jort", "jort", null, Collections.emptySet(), Collections.emptyMap()));
+	}
+
+	@Override
+	public boolean createContainerInLocation(Location location, String container) {
+		checkContainer(container);
+		return true;
 	}
 
 	@Override
 	public boolean createContainerInLocation(Location location,
 			String container, CreateContainerOptions createContainerOptions) {
-		throw new UnsupportedOperationException("Read-only BlobStore");
+		checkContainer(container);
+		return true;
+	}
+
+	@Override
+	public boolean containerExists(String container) {
+		return identity.equals(container);
 	}
 
 	@Override
@@ -346,16 +452,6 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public void deleteDirectory(String container, String directory) {
-		throw new UnsupportedOperationException("Read-only BlobStore");
-	}
-
-	@Override
-	public void removeBlob(String container, String name) {
-		throw new UnsupportedOperationException("Read-only BlobStore");
-	}
-
-	@Override
-	public void removeBlobs(String container, Iterable<String> iterable) {
 		throw new UnsupportedOperationException("Read-only BlobStore");
 	}
 

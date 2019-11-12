@@ -6,6 +6,12 @@
 		bucket: "mybucket"
 		publicHost: "https://sfo2.digitaloceanspaces.com/mybucket"
 	}
+	backupBackend: {
+		endpoint: "https://s3.us-east-2.wasabisys.com"
+		accessKeyId: "ACCESS_KEY_ID"
+		secretAccessKey: "SECRET_ACCESS_KEY"
+		bucket: "mybucket-backup"
+	}
 	mysql: {
 		host: "localhost"
 		port: 3306

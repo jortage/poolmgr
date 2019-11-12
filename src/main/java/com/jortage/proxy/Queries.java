@@ -55,6 +55,17 @@ public class Queries {
 		}
 	}
 
+	public static void putPendingBackup(DataSource dataSource, HashCode hash) {
+		try (Connection c = dataSource.getConnection()) {
+			try (PreparedStatement ps = c.prepareStatement("INSERT IGNORE INTO `pending_backup` (`hash`) VALUES (?);")) {
+				ps.setBytes(1, hash.asBytes());
+				ps.executeUpdate();
+			}
+		} catch (SQLException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
 	public static void putMultipart(DataSource dataSource, String identity, String name, String tempfile) {
 		try (Connection c = dataSource.getConnection()) {
 			try (PreparedStatement ps = c.prepareStatement("INSERT INTO `multipart_uploads` (`identity`, `name`, `tempfile`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `tempfile` = ?;")) {
