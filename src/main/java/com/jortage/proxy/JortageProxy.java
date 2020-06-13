@@ -29,6 +29,8 @@ import org.jclouds.ContextBuilder;
 import org.jclouds.blobstore.BlobStore;
 import org.jclouds.blobstore.BlobStoreContext;
 import org.jclouds.blobstore.domain.Blob;
+import org.jclouds.blobstore.domain.BlobAccess;
+import org.jclouds.blobstore.options.PutOptions;
 import org.jclouds.filesystem.reference.FilesystemConstants;
 import org.jclouds.logging.slf4j.config.SLF4JLoggingModule;
 import org.mariadb.jdbc.MariaDbPoolDataSource;
@@ -124,6 +126,9 @@ public class JortageProxy {
 						if (b != null) {
 							response.setHeader("Cache-Control", "private, no-cache");
 							response.setHeader("Content-Type", b.getMetadata().getContentMetadata().getContentType());
+							if (b.getMetadata().getContentMetadata().getContentLength() != null) {
+								response.setHeader("Content-Length", b.getMetadata().getContentMetadata().getContentLength().toString());
+							}
 							response.setStatus(200);
 							ByteStreams.copy(b.getPayload().openStream(), response.getOutputStream());
 						} else {
@@ -133,6 +138,10 @@ public class JortageProxy {
 					}
 					try {
 						String hash = Queries.getMap(dataSource, identity, name).toString();
+						BlobAccess ba = backingBlobStore.getBlobAccess(bucket, hashToPath(hash));
+						if (ba != BlobAccess.PUBLIC_READ) {
+							backingBlobStore.setBlobAccess(bucket, hashToPath(hash), BlobAccess.PUBLIC_READ);
+						}
 						response.setHeader("Cache-Control", "public");
 						response.setHeader("Location", publicHost+"/"+hashToPath(hash));
 						response.setStatus(301);
@@ -150,6 +159,10 @@ public class JortageProxy {
 				System.err.println("Ignoring SIGALRM, backup already in progress");
 				return;
 			}
+			if (backupBucket == null) {
+				System.err.println("Ignoring SIGALRM, nowhere to backup to");
+				return;
+			}
 			new Thread(() -> {
 				int count = 0;
 				Stopwatch sw = Stopwatch.createStarted();
@@ -162,7 +175,18 @@ public class JortageProxy {
 									byte[] bys = rs.getBytes("hash");
 									String path = hashToPath(HashCode.fromBytes(bys).toString());
 									Blob src = backingBlobStore.getBlob(bucket, path);
-									backingBackupBlobStore.putBlob(backupBucket, src);
+									if (src == null) {
+										Blob actualSrc = backingBackupBlobStore.getBlob(backupBucket, path);
+										if (actualSrc == null) {
+											System.err.println("Can't find blob "+path+" in source or destination?");
+											continue;
+										}  else {
+											System.err.println("Copying "+path+" from \"backup\" to current - this is a little odd");
+											backingBlobStore.putBlob(bucket, actualSrc, new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ));
+										}
+									} else {
+										backingBackupBlobStore.putBlob(backupBucket, src, new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ));
+									}
 									delete.setBytes(1, bys);
 									delete.executeUpdate();
 									count++;
@@ -194,10 +218,12 @@ public class JortageProxy {
 			config = Jankson.builder().build().load(configFile);
 			configFileLastLoaded = System.currentTimeMillis();
 			bucket = ((JsonPrimitive)config.getObject("backend").get("bucket")).asString();
-			backupBucket = ((JsonPrimitive)config.getObject("backupBackend").get("bucket")).asString();
 			publicHost = ((JsonPrimitive)config.getObject("backend").get("publicHost")).asString();
 			backingBlobStore = createBlobStore("backend");
-			backingBackupBlobStore = createBlobStore("backupBackend");
+			if (config.containsKey("backupBackend")) {
+				backupBucket = ((JsonPrimitive)config.getObject("backupBackend").get("bucket")).asString();
+				backingBackupBlobStore = createBlobStore("backupBackend");
+			}
 			JsonObject sql = config.getObject("mysql");
 			String sqlHost = ((JsonPrimitive)sql.get("host")).asString();
 			int sqlPort = ((Number)((JsonPrimitive)sql.get("port")).getValue()).intValue();

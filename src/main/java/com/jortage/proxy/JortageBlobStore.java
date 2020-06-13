@@ -213,7 +213,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 	public String putBlob(String container, Blob blob) {
 		checkContainer(container);
 		if (isDump(blob.getMetadata().getName())) {
-			return dumpsStore.putBlob(container, blob);
+			return dumpsStore.putBlob(container, blob, new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ));
 		}
 		File tempFile = null;
 		try {
@@ -270,7 +270,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 	public MultipartUpload initiateMultipartUpload(String container, BlobMetadata blobMetadata, PutOptions options) {
 		checkContainer(container);
 		if (isDump(blobMetadata.getName())) {
-			return dumpsStore.initiateMultipartUpload(container, blobMetadata, options);
+			return dumpsStore.initiateMultipartUpload(container, blobMetadata, new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ));
 		}
 		MutableBlobMetadata mbm = new MutableBlobMetadataImpl(blobMetadata);
 		String tempfile = "multitmp/"+identity+"-"+System.currentTimeMillis()+"-"+System.nanoTime();
@@ -381,12 +381,19 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public void removeBlob(String container, String name) {
+		checkContainer(container);
 		if (isDump(name)) {
-			checkContainer(container);
 			dumpsStore.removeBlob(container, name);
 			return;
 		}
-		throw new UnsupportedOperationException("Read-only BlobStore");
+		HashCode hc = Queries.getMap(dataSource, identity, name);
+		if (Queries.deleteMap(dataSource, identity, name)) {
+			int rc = Queries.getReferenceCount(dataSource, hc);
+			if (rc == 0) {
+				String hashString = hc.toString();
+				delegate().removeBlob(bucket, JortageProxy.hashToPath(hashString));
+			}
+		}
 	}
 
 	@Override
