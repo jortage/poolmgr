@@ -71,7 +71,7 @@ public class Queries {
 		}
 	}
 	
-	public static boolean deleteMap(DataSource dataSource, String identity, String name) {
+	public static boolean removeMap(DataSource dataSource, String identity, String name) {
 		name = toSFN(name);
 		try (Connection c = dataSource.getConnection()) {
 			try (PreparedStatement ps = c.prepareStatement("DELETE FROM `name_map` WHERE `identity` = ? AND `name` = ?;")) {
@@ -84,7 +84,7 @@ public class Queries {
 		}
 	}
 	
-	public static int getReferenceCount(DataSource dataSource, HashCode hash) {
+	public static int getMapCount(DataSource dataSource, HashCode hash) {
 		try (Connection c = dataSource.getConnection()) {
 			try (PreparedStatement ps = c.prepareStatement("SELECT COUNT(1) AS count FROM `name_map` WHERE `hash` = ?;")) {
 				ps.setBytes(1, hash.asBytes());
@@ -112,10 +112,32 @@ public class Queries {
 			throw new RuntimeException(e);
 		}
 	}
+	
+	public static void removeFilesize(DataSource dataSource, HashCode hash) {
+		try (Connection c = dataSource.getConnection()) {
+			try (PreparedStatement ps = c.prepareStatement("DELETE FROM `filesizes` WHERE `hash` = ?;")) {
+				ps.setBytes(1, hash.asBytes());
+				ps.executeUpdate();
+			}
+		} catch (SQLException e) {
+			throw new RuntimeException(e);
+		}
+	}
 
 	public static void putPendingBackup(DataSource dataSource, HashCode hash) {
 		try (Connection c = dataSource.getConnection()) {
 			try (PreparedStatement ps = c.prepareStatement("INSERT IGNORE INTO `pending_backup` (`hash`) VALUES (?);")) {
+				ps.setBytes(1, hash.asBytes());
+				ps.executeUpdate();
+			}
+		} catch (SQLException e) {
+			throw new RuntimeException(e);
+		}
+	}
+	
+	public static void removePendingBackup(DataSource dataSource, HashCode hash) {
+		try (Connection c = dataSource.getConnection()) {
+			try (PreparedStatement ps = c.prepareStatement("DELETE FROM `pending_backup` WHERE `hash` = ?;")) {
 				ps.setBytes(1, hash.asBytes());
 				ps.executeUpdate();
 			}

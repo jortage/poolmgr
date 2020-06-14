@@ -11,3 +11,4 @@ hs_err_pid*.log
 .idea/
 data.mv
 /backups
+/config.jkson

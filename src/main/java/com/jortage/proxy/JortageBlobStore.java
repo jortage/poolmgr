@@ -150,22 +150,6 @@ public class JortageBlobStore extends ForwardingBlobStore {
 	}
 
 	@Override
-	public PageSet<? extends StorageMetadata> list() {
-		throw new UnsupportedOperationException();
-	}
-
-	@Override
-	public PageSet<? extends StorageMetadata> list(String container) {
-		throw new UnsupportedOperationException();
-	}
-
-	@Override
-	public PageSet<? extends StorageMetadata> list(String container,
-			ListContainerOptions options) {
-		throw new UnsupportedOperationException();
-	}
-
-	@Override
 	public ContainerAccess getContainerAccess(String container) {
 		checkContainer(container);
 		return ContainerAccess.PUBLIC_READ;
@@ -317,23 +301,25 @@ public class JortageBlobStore extends ForwardingBlobStore {
 			HashCode hash = hos.hash();
 			String hashStr = hash.toString();
 			String path = JortageProxy.hashToPath(hashStr);
-			// don't fall afoul of request rate limits
-			Thread.sleep(500);
+			// we're about to do a bunch of stuff at once
+			// sleep so we don't fall afoul of request rate limits
+			// (causes intermittent 429s on at least DigitalOcean)
+			Thread.sleep(250);
 			BlobMetadata meta = delegate().blobMetadata(mpu.containerName(), mpu.blobName());
 			if (!delegate().blobExists(bucket, path)) {
-				Thread.sleep(500);
+				Thread.sleep(250);
 				etag = delegate().copyBlob(mpu.containerName(), mpu.blobName(), bucket, path, CopyOptions.builder().contentMetadata(meta.getContentMetadata()).build());
-				Thread.sleep(500);
+				Thread.sleep(250);
 				delegate().setBlobAccess(bucket, path, BlobAccess.PUBLIC_READ);
 				Queries.putPendingBackup(dataSource, hash);
 			} else {
-				Thread.sleep(500);
+				Thread.sleep(250);
 				etag = delegate().blobMetadata(bucket, path).getETag();
 			}
 			Queries.putMap(dataSource, identity, Preconditions.checkNotNull(meta.getUserMetadata().get("jortage-originalname")), hash);
 			Queries.putFilesize(dataSource, hash, counter.getCount());
 			Queries.removeMultipart(dataSource, mpu.blobName());
-			Thread.sleep(500);
+			Thread.sleep(250);
 			delegate().removeBlob(mpu.containerName(), mpu.blobName());
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
@@ -387,11 +373,14 @@ public class JortageBlobStore extends ForwardingBlobStore {
 			return;
 		}
 		HashCode hc = Queries.getMap(dataSource, identity, name);
-		if (Queries.deleteMap(dataSource, identity, name)) {
-			int rc = Queries.getReferenceCount(dataSource, hc);
+		if (Queries.removeMap(dataSource, identity, name)) {
+			int rc = Queries.getMapCount(dataSource, hc);
 			if (rc == 0) {
 				String hashString = hc.toString();
-				delegate().removeBlob(bucket, JortageProxy.hashToPath(hashString));
+				String path = JortageProxy.hashToPath(hashString);
+				delegate().removeBlob(bucket, path);
+				Queries.removeFilesize(dataSource, hc);
+				Queries.removePendingBackup(dataSource, hc);
 			}
 		}
 	}
@@ -426,46 +415,65 @@ public class JortageBlobStore extends ForwardingBlobStore {
 		return identity.equals(container);
 	}
 
+	private static final String NO_DIR_MSG = "Directories are an illusion";
+	private static final String NO_BULK_MSG = "Bulk operations are not implemented by Jortage for safety and speed";
+	private static final String NO_PRIVATE_MSG = "Jortage does not support private objects";
+	
 	@Override
-	public void setContainerAccess(String container, ContainerAccess
-			containerAccess) {
-		throw new UnsupportedOperationException("Read-only BlobStore");
+	public void setContainerAccess(String container, ContainerAccess containerAccess) {
+		if (containerAccess != ContainerAccess.PUBLIC_READ)
+			throw new UnsupportedOperationException(NO_PRIVATE_MSG);
+	}
+	
+	@Override
+	public void setBlobAccess(String container, String name, BlobAccess access) {
+		if (access != BlobAccess.PUBLIC_READ)
+			throw new UnsupportedOperationException(NO_PRIVATE_MSG);
 	}
 
 	@Override
 	public void clearContainer(String container) {
-		throw new UnsupportedOperationException("Read-only BlobStore");
+		throw new UnsupportedOperationException(NO_BULK_MSG);
 	}
 
 	@Override
 	public void clearContainer(String container, ListContainerOptions options) {
-		throw new UnsupportedOperationException("Read-only BlobStore");
+		throw new UnsupportedOperationException(NO_BULK_MSG);
 	}
 
 	@Override
 	public void deleteContainer(String container) {
-		throw new UnsupportedOperationException("Read-only BlobStore");
+		throw new UnsupportedOperationException(NO_BULK_MSG);
 	}
 
 	@Override
 	public boolean deleteContainerIfEmpty(String container) {
-		throw new UnsupportedOperationException("Read-only BlobStore");
+		throw new UnsupportedOperationException(NO_BULK_MSG);
 	}
 
 	@Override
+	public PageSet<? extends StorageMetadata> list() {
+		throw new UnsupportedOperationException(NO_BULK_MSG);
+	}
+
+	@Override
+	public PageSet<? extends StorageMetadata> list(String container) {
+		throw new UnsupportedOperationException(NO_BULK_MSG);
+	}
+
+	@Override
+	public PageSet<? extends StorageMetadata> list(String container, ListContainerOptions options) {
+		throw new UnsupportedOperationException(NO_BULK_MSG);
+	}
+	
+	@Override
 	public void createDirectory(String container, String directory) {
-		throw new UnsupportedOperationException("Read-only BlobStore");
+		throw new UnsupportedOperationException(NO_DIR_MSG);
 	}
 
 	@Override
 	public void deleteDirectory(String container, String directory) {
-		throw new UnsupportedOperationException("Read-only BlobStore");
-	}
-
-	@Override
-	public void setBlobAccess(String container, String name,
-			BlobAccess access) {
-		throw new UnsupportedOperationException("Read-only BlobStore");
+		throw new UnsupportedOperationException(NO_DIR_MSG);
 	}
 
 }

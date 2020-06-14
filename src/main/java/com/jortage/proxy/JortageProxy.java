@@ -1,29 +1,21 @@
 package com.jortage.proxy;
 
 import java.io.File;
-import java.io.IOException;
+import java.lang.reflect.Field;
 import java.net.URI;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.List;
 import java.util.Properties;
-import java.util.Map.Entry;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 
 import sun.misc.Signal;
 
-import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
-import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.gaul.s3proxy.AuthenticationType;
-import org.gaul.s3proxy.BlobStoreLocator;
 import org.gaul.s3proxy.S3Proxy;
 import org.jclouds.ContextBuilder;
 import org.jclouds.blobstore.BlobStore;
@@ -35,13 +27,11 @@ import org.jclouds.filesystem.reference.FilesystemConstants;
 import org.jclouds.logging.slf4j.config.SLF4JLoggingModule;
 import org.mariadb.jdbc.MariaDbPoolDataSource;
 
-import com.google.common.base.Splitter;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
 import com.google.common.escape.Escaper;
 import com.google.common.hash.HashCode;
-import com.google.common.io.ByteStreams;
 import com.google.common.net.UrlEscapers;
 
 import blue.endless.jankson.Jankson;
@@ -50,162 +40,147 @@ import blue.endless.jankson.JsonPrimitive;
 
 public class JortageProxy {
 
-	private static final Splitter SPLITTER = Splitter.on('/').limit(2).omitEmptyStrings();
-
 	private static final File configFile = new File("config.jkson");
-	private static JsonObject config;
-	private static long configFileLastLoaded;
-	private static BlobStore backingBlobStore;
-	private static BlobStore backingBackupBlobStore;
-	private static String bucket;
-	private static String backupBucket;
-	private static String publicHost;
-	private static MariaDbPoolDataSource dataSource;
+	public static JsonObject config;
+	public static long configFileLastLoaded;
+	public static BlobStore backingBlobStore;
+	public static BlobStore backingBackupBlobStore;
+	public static String bucket;
+	public static String backupBucket;
+	public static String publicHost;
+	public static MariaDbPoolDataSource dataSource;
 	private static boolean backingUp = false;
 
 	@SuppressWarnings("restriction")
 	public static void main(String[] args) throws Exception {
-		reloadConfig();
-
-		S3Proxy s3Proxy = S3Proxy.builder()
-				.awsAuthentication(AuthenticationType.AWS_V2_OR_V4, "DUMMY", "DUMMY")
-				.endpoint(URI.create("http://localhost:23278"))
-				.jettyMaxThreads(24)
-				.v4MaxNonChunkedRequestSize(128L*1024L*1024L)
-				.build();
-
-		Properties dumpsProps = new Properties();
-		dumpsProps.setProperty(FilesystemConstants.PROPERTY_BASEDIR, "dumps");
-		BlobStore dumpsStore = ContextBuilder.newBuilder("filesystem")
-				.overrides(dumpsProps)
-				.build(BlobStoreContext.class)
-				.getBlobStore();
-
-		s3Proxy.setBlobStoreLocator(new BlobStoreLocator() {
-
-			@Override
-			public Entry<String, BlobStore> locateBlobStore(String identity, String container, String blob) {
+		try {
+			Stopwatch initSw = Stopwatch.createStarted();
+			reloadConfig();
+	
+			System.err.print("Starting S3 server... ");
+			System.err.flush();
+			S3Proxy s3Proxy = S3Proxy.builder()
+					.awsAuthentication(AuthenticationType.AWS_V2_OR_V4, "DUMMY", "DUMMY")
+					.endpoint(URI.create("http://localhost:23278"))
+					.jettyMaxThreads(24)
+					.v4MaxNonChunkedRequestSize(128L*1024L*1024L)
+					.build();
+			
+			// excuse me, this is mine now
+			Field serverField = S3Proxy.class.getDeclaredField("server");
+			serverField.setAccessible(true);
+			Server s3ProxyServer = (Server) serverField.get(s3Proxy);
+			s3ProxyServer.setHandler(new OuterHandler(s3ProxyServer.getHandler()));
+			QueuedThreadPool pool = (QueuedThreadPool)s3ProxyServer.getThreadPool();
+			pool.setName("Jetty-Common");
+	
+			Properties dumpsProps = new Properties();
+			dumpsProps.setProperty(FilesystemConstants.PROPERTY_BASEDIR, "dumps");
+			BlobStore dumpsStore = ContextBuilder.newBuilder("filesystem")
+					.overrides(dumpsProps)
+					.build(BlobStoreContext.class)
+					.getBlobStore();
+	
+			s3Proxy.setBlobStoreLocator((identity, container, blob) -> {
 				reloadConfigIfChanged();
 				if (config.containsKey("users") && config.getObject("users").containsKey(identity)) {
-					return Maps.immutableEntry(((JsonPrimitive)config.getObject("users").get(identity)).asString(), new JortageBlobStore(backingBlobStore, dumpsStore, bucket, identity, dataSource));
+					return Maps.immutableEntry(((JsonPrimitive)config.getObject("users").get(identity)).asString(),
+							new JortageBlobStore(backingBlobStore, dumpsStore, bucket, identity, dataSource));
 				} else {
 					throw new RuntimeException("Access denied");
 				}
-			}
-		});
-
-		s3Proxy.start();
-		System.err.println("S3 listening on localhost:23278");
-
-		QueuedThreadPool pool = new QueuedThreadPool(24);
-		pool.setName("Redir-Jetty");
-		Server redir = new Server(pool);
-		ServerConnector conn = new ServerConnector(redir);
-		conn.setHost("localhost");
-		conn.setPort(23279);
-		redir.addConnector(conn);
-		redir.setHandler(new AbstractHandler() {
-
-			@Override
-			public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
-				baseRequest.setHandled(true);
-				if ("/".equals(target) || "/index.html".equals(target) || "".equals(target)) {
-					response.setHeader("Location", "https://jortage.com");
-					response.setStatus(301);
-					return;
-				}
-				List<String> split = SPLITTER.splitToList(target);
-				if (split.size() != 2) {
-					response.sendError(400);
-					return;
-				} else {
-					String identity = split.get(0);
-					String name = split.get(1);
-					if (name.startsWith("backups/dumps") || name.startsWith("/backups/dumps")) {
-						Blob b = dumpsStore.getBlob(identity, name);
-						if (b != null) {
-							response.setHeader("Cache-Control", "private, no-cache");
-							response.setHeader("Content-Type", b.getMetadata().getContentMetadata().getContentType());
-							if (b.getMetadata().getContentMetadata().getContentLength() != null) {
-								response.setHeader("Content-Length", b.getMetadata().getContentMetadata().getContentLength().toString());
-							}
-							response.setStatus(200);
-							ByteStreams.copy(b.getPayload().openStream(), response.getOutputStream());
-						} else {
-							response.sendError(404);
-						}
+			});
+	
+			s3Proxy.start();
+			System.err.println("ready on http://localhost:23278");
+	
+			System.err.print("Starting redirector server... ");
+			System.err.flush();
+			Server redir = new Server(pool);
+			ServerConnector redirConn = new ServerConnector(redir);
+			redirConn.setHost("localhost");
+			redirConn.setPort(23279);
+			redir.addConnector(redirConn);
+			redir.setHandler(new OuterHandler(new RedirHandler(dumpsStore)));
+			redir.start();
+			System.err.println("ready on http://localhost:23279");
+			
+			System.err.print("Starting Rivet server... ");
+			System.err.flush();
+			Server rivet = new Server(pool);
+			ServerConnector rivetConn = new ServerConnector(rivet);
+			rivetConn.setHost("localhost");
+			rivetConn.setPort(23280);
+			rivet.addConnector(rivetConn);
+			rivet.setHandler(new OuterHandler(new RivetHandler()));
+			rivet.start();
+			System.err.println("ready on http://localhost:23280");
+			
+			System.err.print("Registering SIGALRM handler for backups... ");
+			System.err.flush();
+			try {
+				Signal.handle(new Signal("ALRM"), (sig) -> {
+					reloadConfigIfChanged();
+					if (backingUp) {
+						System.err.println("Ignoring SIGALRM, backup already in progress");
 						return;
 					}
-					try {
-						String hash = Queries.getMap(dataSource, identity, name).toString();
-						BlobAccess ba = backingBlobStore.getBlobAccess(bucket, hashToPath(hash));
-						if (ba != BlobAccess.PUBLIC_READ) {
-							backingBlobStore.setBlobAccess(bucket, hashToPath(hash), BlobAccess.PUBLIC_READ);
-						}
-						response.setHeader("Cache-Control", "public");
-						response.setHeader("Location", publicHost+"/"+hashToPath(hash));
-						response.setStatus(301);
-					} catch (IllegalArgumentException e) {
-						response.sendError(404);
+					if (backupBucket == null) {
+						System.err.println("Ignoring SIGALRM, nowhere to backup to");
+						return;
 					}
-				}
-			}
-		});
-		redir.start();
-		System.err.println("Redirector listening on localhost:23279");
-		Signal.handle(new Signal("ALRM"), (sig) -> {
-			reloadConfigIfChanged();
-			if (backingUp) {
-				System.err.println("Ignoring SIGALRM, backup already in progress");
-				return;
-			}
-			if (backupBucket == null) {
-				System.err.println("Ignoring SIGALRM, nowhere to backup to");
-				return;
-			}
-			new Thread(() -> {
-				int count = 0;
-				Stopwatch sw = Stopwatch.createStarted();
-				try (Connection c = dataSource.getConnection()) {
-					backingUp = true;
-					try (PreparedStatement delete = c.prepareStatement("DELETE FROM `pending_backup` WHERE `hash` = ?;")) {
-						try (PreparedStatement ps = c.prepareStatement("SELECT `hash` FROM `pending_backup`;")) {
-							try (ResultSet rs = ps.executeQuery()) {
-								while (rs.next()) {
-									byte[] bys = rs.getBytes("hash");
-									String path = hashToPath(HashCode.fromBytes(bys).toString());
-									Blob src = backingBlobStore.getBlob(bucket, path);
-									if (src == null) {
-										Blob actualSrc = backingBackupBlobStore.getBlob(backupBucket, path);
-										if (actualSrc == null) {
-											System.err.println("Can't find blob "+path+" in source or destination?");
-											continue;
-										}  else {
-											System.err.println("Copying "+path+" from \"backup\" to current - this is a little odd");
-											backingBlobStore.putBlob(bucket, actualSrc, new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ));
+					new Thread(() -> {
+						int count = 0;
+						Stopwatch sw = Stopwatch.createStarted();
+						try (Connection c = dataSource.getConnection()) {
+							backingUp = true;
+							try (PreparedStatement delete = c.prepareStatement("DELETE FROM `pending_backup` WHERE `hash` = ?;")) {
+								try (PreparedStatement ps = c.prepareStatement("SELECT `hash` FROM `pending_backup`;")) {
+									try (ResultSet rs = ps.executeQuery()) {
+										while (rs.next()) {
+											byte[] bys = rs.getBytes("hash");
+											String path = hashToPath(HashCode.fromBytes(bys).toString());
+											Blob src = backingBlobStore.getBlob(bucket, path);
+											if (src == null) {
+												Blob actualSrc = backingBackupBlobStore.getBlob(backupBucket, path);
+												if (actualSrc == null) {
+													System.err.println("Can't find blob "+path+" in source or destination?");
+													continue;
+												}  else {
+													System.err.println("Copying "+path+" from \"backup\" to current - this is a little odd");
+													backingBlobStore.putBlob(bucket, actualSrc, new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ));
+												}
+											} else {
+												backingBackupBlobStore.putBlob(backupBucket, src, new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ));
+											}
+											delete.setBytes(1, bys);
+											delete.executeUpdate();
+											count++;
 										}
-									} else {
-										backingBackupBlobStore.putBlob(backupBucket, src, new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ));
+										System.err.println("Backup of "+count+" item"+s(count)+" successful in "+sw);
 									}
-									delete.setBytes(1, bys);
-									delete.executeUpdate();
-									count++;
 								}
-								System.err.println("Backup of "+count+" item"+s(count)+" successful in "+sw);
 							}
+						} catch (Exception e) {
+							e.printStackTrace();
+							System.err.println("Backup failed after "+count+" item"+s(count)+" in "+sw);
+						} finally {
+							backingUp = false;
 						}
-					}
-				} catch (Exception e) {
-					e.printStackTrace();
-					System.err.println("Backup failed after "+count+" item"+s(count)+" in "+sw);
-				} finally {
-					backingUp = false;
-				}
-			}, "Backup thread").start();
-		});
+					}, "Backup thread").start();
+				});
+				System.err.println("done");
+			} catch (Exception e) {
+				System.err.println("failed");
+			}
+			System.err.println("This proxy has Super Denim Powers. (Done in "+initSw+")");
+		} catch (Throwable t) {
+			System.err.println(" failed");
+			t.printStackTrace();
+		}
 	}
 
-	private static void reloadConfigIfChanged() {
+	public static void reloadConfigIfChanged() {
 		if (System.currentTimeMillis()-configFileLastLoaded > 500 && configFile.lastModified() > configFileLastLoaded) reloadConfig();
 	}
 
@@ -214,17 +189,28 @@ public class JortageProxy {
 	}
 
 	private static void reloadConfig() {
+		boolean reloading = config != null;
 		try {
-			config = Jankson.builder().build().load(configFile);
-			configFileLastLoaded = System.currentTimeMillis();
-			bucket = ((JsonPrimitive)config.getObject("backend").get("bucket")).asString();
-			publicHost = ((JsonPrimitive)config.getObject("backend").get("publicHost")).asString();
-			backingBlobStore = createBlobStore("backend");
-			if (config.containsKey("backupBackend")) {
-				backupBucket = ((JsonPrimitive)config.getObject("backupBackend").get("bucket")).asString();
-				backingBackupBlobStore = createBlobStore("backupBackend");
+			String prelude = "\r"+(reloading ? "Reloading" : "Loading")+" config: ";
+			System.err.print(prelude+"Parsing...");
+			System.err.flush();
+			JsonObject configTmp = Jankson.builder().build().load(configFile);
+			long configFileLastLoadedTmp = System.currentTimeMillis();
+			String bucketTmp = ((JsonPrimitive)configTmp.getObject("backend").get("bucket")).asString();
+			String publicHostTmp = ((JsonPrimitive)configTmp.getObject("backend").get("publicHost")).asString();
+			System.err.print(prelude+"Constructing blob stores...");
+			System.err.flush();
+			BlobStore backingBlobStoreTmp = createBlobStore(configTmp.getObject("backend"));
+			String backupBucketTmp;
+			BlobStore backingBackupBlobStoreTmp;
+			if (configTmp.containsKey("backupBackend")) {
+				backupBucketTmp = ((JsonPrimitive)configTmp.getObject("backupBackend").get("bucket")).asString();
+				backingBackupBlobStoreTmp = createBlobStore(configTmp.getObject("backupBackend"));
+			} else {
+				backupBucketTmp = null;
+				backingBackupBlobStoreTmp = null;
 			}
-			JsonObject sql = config.getObject("mysql");
+			JsonObject sql = configTmp.getObject("mysql");
 			String sqlHost = ((JsonPrimitive)sql.get("host")).asString();
 			int sqlPort = ((Number)((JsonPrimitive)sql.get("port")).getValue()).intValue();
 			String sqlDb = ((JsonPrimitive)sql.get("database")).asString();
@@ -232,11 +218,12 @@ public class JortageProxy {
 			String sqlPass = ((JsonPrimitive)sql.get("pass")).asString();
 			Escaper pesc = UrlEscapers.urlPathSegmentEscaper();
 			Escaper esc = UrlEscapers.urlFormParameterEscaper();
-			if (dataSource != null) {
-				dataSource.close();
-			}
-			dataSource = new MariaDbPoolDataSource("jdbc:mariadb://"+pesc.escape(sqlHost)+":"+sqlPort+"/"+pesc.escape(sqlDb)+"?user="+esc.escape(sqlUser)+"&password="+esc.escape(sqlPass)+"&autoReconnect=true");
-			try (Connection c = dataSource.getConnection()) {
+			System.err.print(prelude+"Connecting to MariaDB...   ");
+			System.err.flush();
+			MariaDbPoolDataSource dataSourceTmp =
+					new MariaDbPoolDataSource("jdbc:mariadb://"+pesc.escape(sqlHost)+":"+sqlPort+"/"+pesc.escape(sqlDb)
+					+"?user="+esc.escape(sqlUser)+"&password="+esc.escape(sqlPass)+"&autoReconnect=true");
+			try (Connection c = dataSourceTmp.getConnection()) {
 				execOneshot(c, "CREATE TABLE IF NOT EXISTS `name_map` (\n" +
 						"  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n" +
 						"  `identity` VARCHAR(255) NOT NULL,\n" +
@@ -265,15 +252,32 @@ public class JortageProxy {
 						"  PRIMARY KEY (`hash`)\n" +
 						") ROW_FORMAT=COMPRESSED;");
 			}
-			System.err.println("Config file reloaded.");
+			System.err.println("\r"+(reloading ? "Reloading" : "Loading")+" config... done");
+			MariaDbPoolDataSource oldDataSource = dataSource;
+			config = configTmp;
+			configFileLastLoaded = configFileLastLoadedTmp;
+			bucket = bucketTmp;
+			publicHost = publicHostTmp;
+			backingBlobStore = backingBlobStoreTmp;
+			backupBucket = backupBucketTmp;
+			backingBackupBlobStore = backingBackupBlobStoreTmp;
+			dataSource = dataSourceTmp;
+			if (oldDataSource != null) {
+				oldDataSource.close();
+			}
 		} catch (Exception e) {
+			System.err.println(" failed");
 			e.printStackTrace();
-			System.err.println("Failed to reload config. Behavior unchanged.");
+			if (reloading) {
+				System.err.println("Failed to reload config. Behavior unchanged.");
+			} else {
+				System.err.println("Failed to load config. Exit");
+				System.exit(2);
+			}
 		}
 	}
 
-	private static BlobStore createBlobStore(String string) {
-		JsonObject obj = config.getObject(string);
+	private static BlobStore createBlobStore(JsonObject obj) {
 		return ContextBuilder.newBuilder("s3")
 			.credentials(((JsonPrimitive)obj.get("accessKeyId")).asString(), ((JsonPrimitive)obj.get("secretAccessKey")).asString())
 			.modules(ImmutableList.of(new SLF4JLoggingModule()))

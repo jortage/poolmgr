@@ -7,11 +7,42 @@ repositories {
 	mavenCentral()
 }
 
+sourceSets {
+	main {
+		java {
+			srcDirs = ['src/main/java', 'src/s3proxy/java']
+		}
+	}
+}
+
 dependencies {
 	implementation 'blue.endless:jankson:1.1.2'
 	implementation 'org.mariadb.jdbc:mariadb-java-client:2.4.4'
-	implementation 'org.gaul:s3proxy:1.6.1'
+	implementation 'com.squareup.okhttp3:okhttp:4.7.2'
+	implementation 'com.squareup.okhttp3:okhttp-brotli:4.7.2'
+	
+	implementation 'org.apache.jclouds:jclouds-blobstore:2.2.1'
+	implementation 'org.apache.jclouds.provider:aws-s3:2.2.1'
+	implementation 'org.apache.jclouds.api:filesystem:2.2.1'
+	implementation 'org.apache.jclouds.driver:jclouds-slf4j:2.2.1'
+	
+	implementation 'org.eclipse.jetty:jetty-server:9.4.24.v20191120'
+	
+	implementation 'org.slf4j:slf4j-api:1.7.9'
+	implementation 'org.slf4j:slf4j-nop:1.7.9'
+	
+	implementation 'com.google.code.findbugs:jsr305:3.0.2'
+	implementation 'com.google.code.findbugs:findbugs-annotations:3.0.1'
+	
+	implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.11.0'
+	implementation 'com.fasterxml.woodstox:woodstox-core:6.2.1'
+	
+	implementation 'commons-fileupload:commons-fileupload:1.4'
 }
+
+// I am *not* pulling in five different dependencies for a couple classes we don't use
+file('s3proxy/src/main/java/org/gaul/s3proxy/junit/S3ProxyRule.java').delete();
+file('s3proxy/src/main/java/org/gaul/s3proxy/Main.java').delete();
 
 project.configurations.implementation.setCanBeResolved(true)
 
