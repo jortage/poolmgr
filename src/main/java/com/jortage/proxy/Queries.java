@@ -100,6 +100,19 @@ public class Queries {
 			throw new RuntimeException(e);
 		}
 	}
+	
+	public static boolean isMapped(DataSource dataSource, HashCode hash) {
+		try (Connection c = dataSource.getConnection()) {
+			try (PreparedStatement ps = c.prepareStatement("SELECT 1 FROM `name_map` WHERE `hash` = ? LIMIT 1;")) {
+				ps.setBytes(1, hash.asBytes());
+				try (ResultSet rs = ps.executeQuery()) {
+					return rs.first();
+				}
+			}
+		} catch (SQLException e) {
+			throw new RuntimeException(e);
+		}
+	}
 
 	public static void putFilesize(DataSource dataSource, HashCode hash, long size) {
 		try (Connection c = dataSource.getConnection()) {
