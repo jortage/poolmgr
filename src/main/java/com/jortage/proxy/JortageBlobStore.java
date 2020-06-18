@@ -196,10 +196,15 @@ public class JortageBlobStore extends ForwardingBlobStore {
 	@Override
 	public String putBlob(String container, Blob blob) {
 		checkContainer(container);
-		if (isDump(blob.getMetadata().getName())) {
+		String blobName = blob.getMetadata().getName();
+		if (isDump(blobName)) {
 			return dumpsStore.putBlob(container, blob, new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ));
 		}
 		File tempFile = null;
+		Object mutex = new Object();
+		synchronized (JortageProxy.provisionalMaps) {
+			JortageProxy.provisionalMaps.put(identity, blobName, mutex);
+		}
 		try {
 			File f = File.createTempFile("jortage-proxy-", ".dat");
 			tempFile = f;
@@ -216,7 +221,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 				payload.getContentMetadata().setContentType(contentType);
 				if (delegate().blobExists(bucket, JortageProxy.hashToPath(hashString))) {
 					String etag = delegate().blobMetadata(bucket, JortageProxy.hashToPath(hashString)).getETag();
-					Queries.putMap(dataSource, identity, blob.getMetadata().getName(), hash);
+					Queries.putMap(dataSource, identity, blobName, hash);
 					return etag;
 				}
 				Blob blob2 = blobBuilder(JortageProxy.hashToPath(hashString))
@@ -225,7 +230,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 						.build();
 				String etag = delegate().putBlob(bucket, blob2, new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ).multipart());
 				Queries.putPendingBackup(dataSource, hash);
-				Queries.putMap(dataSource, identity, blob.getMetadata().getName(), hash);
+				Queries.putMap(dataSource, identity, blobName, hash);
 				Queries.putFilesize(dataSource, hash, f.length());
 				return etag;
 			}
@@ -233,6 +238,12 @@ public class JortageBlobStore extends ForwardingBlobStore {
 			throw new UncheckedIOException(e);
 		} finally {
 			if (tempFile != null) tempFile.delete();
+			synchronized (JortageProxy.provisionalMaps) {
+				JortageProxy.provisionalMaps.remove(identity, blobName);
+			}
+			synchronized (mutex) {
+				mutex.notifyAll();
+			}
 		}
 	}
 

@@ -9,7 +9,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Properties;
-
 import sun.misc.Signal;
 
 import org.eclipse.jetty.server.Server;
@@ -28,8 +27,10 @@ import org.jclouds.logging.slf4j.config.SLF4JLoggingModule;
 import org.mariadb.jdbc.MariaDbPoolDataSource;
 
 import com.google.common.base.Stopwatch;
+import com.google.common.collect.HashBasedTable;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Table;
 import com.google.common.escape.Escaper;
 import com.google.common.hash.HashCode;
 import com.google.common.net.UrlEscapers;
@@ -50,6 +51,10 @@ public class JortageProxy {
 	public static String publicHost;
 	public static MariaDbPoolDataSource dataSource;
 	private static boolean backingUp = false;
+	private static boolean rivetEnabled;
+	private static boolean rivetState;
+	
+	public static final Table<String, String, Object> provisionalMaps = HashBasedTable.create();
 
 	@SuppressWarnings("restriction")
 	public static void main(String[] args) throws Exception {
@@ -70,7 +75,7 @@ public class JortageProxy {
 			Field serverField = S3Proxy.class.getDeclaredField("server");
 			serverField.setAccessible(true);
 			Server s3ProxyServer = (Server) serverField.get(s3Proxy);
-			s3ProxyServer.setHandler(new OuterHandler(s3ProxyServer.getHandler()));
+			s3ProxyServer.setHandler(new OuterHandler(new MastodonHackHandler(s3ProxyServer.getHandler())));
 			QueuedThreadPool pool = (QueuedThreadPool)s3ProxyServer.getThreadPool();
 			pool.setName("Jetty-Common");
 	
@@ -105,16 +110,21 @@ public class JortageProxy {
 			redir.start();
 			System.err.println("ready on http://localhost:23279");
 			
-			System.err.print("Starting Rivet server... ");
-			System.err.flush();
-			Server rivet = new Server(pool);
-			ServerConnector rivetConn = new ServerConnector(rivet);
-			rivetConn.setHost("localhost");
-			rivetConn.setPort(23280);
-			rivet.addConnector(rivetConn);
-			rivet.setHandler(new OuterHandler(new RivetHandler()));
-			rivet.start();
-			System.err.println("ready on http://localhost:23280");
+			rivetState = rivetEnabled;
+			if (rivetEnabled) {
+				System.err.print("Starting Rivet server... ");
+				System.err.flush();
+				Server rivet = new Server(pool);
+				ServerConnector rivetConn = new ServerConnector(rivet);
+				rivetConn.setHost("localhost");
+				rivetConn.setPort(23280);
+				rivet.addConnector(rivetConn);
+				rivet.setHandler(new OuterHandler(new RivetHandler()));
+				rivet.start();
+				System.err.println("ready on http://localhost:23280");
+			} else {
+				System.err.println("Not starting Rivet server.");
+			}
 			
 			System.err.print("Registering SIGALRM handler for backups... ");
 			System.err.flush();
@@ -198,6 +208,7 @@ public class JortageProxy {
 			long configFileLastLoadedTmp = System.currentTimeMillis();
 			String bucketTmp = ((JsonPrimitive)configTmp.getObject("backend").get("bucket")).asString();
 			String publicHostTmp = ((JsonPrimitive)configTmp.getObject("backend").get("publicHost")).asString();
+			boolean rivetEnabledTmp = configTmp.recursiveGet(boolean.class, "rivet.enabled");
 			System.err.print(prelude+"Constructing blob stores...");
 			System.err.flush();
 			BlobStore backingBlobStoreTmp = createBlobStore(configTmp.getObject("backend"));
@@ -262,6 +273,10 @@ public class JortageProxy {
 			backupBucket = backupBucketTmp;
 			backingBackupBlobStore = backingBackupBlobStoreTmp;
 			dataSource = dataSourceTmp;
+			rivetEnabled = rivetEnabledTmp;
+			if (rivetState != rivetEnabled && reloading) {
+				System.err.println("WARNING: Cannot hot-"+(rivetEnabled ? "enable" : "disable")+" Rivet. jortage-proxy must be restarted for this change to take effect.");
+			}
 			if (oldDataSource != null) {
 				oldDataSource.close();
 			}

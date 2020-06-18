@@ -328,7 +328,7 @@ public final class RivetHandler extends AbstractHandler {
 				return;
 			}
 			String path = target.substring(8);
-			RivetRequest rreq = authenticateAndParse(target, "PUT", null, false, req, res);
+			RivetRequest rreq = authenticateAndParse(target, "POST", null, false, req, res);
 			if (rreq == null) return;
 			try {
 				HashCode hash = HashCode.fromString(hashStr);
@@ -403,7 +403,7 @@ public final class RivetHandler extends AbstractHandler {
 				res.getOutputStream().close();
 				return null;
 			}
-			if (!"POST".equals(req.getMethod())) {
+			if (!method.equals(req.getMethod())) {
 				res.setHeader("Allow", method);
 				jsonError(res, 405, "Only "+method+" is accepted");
 				return null;

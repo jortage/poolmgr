@@ -2,7 +2,6 @@ package com.jortage.proxy;
 
 import java.io.IOException;
 import java.util.List;
-
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -52,6 +51,23 @@ public final class RedirHandler extends AbstractHandler {
 			}
 			JortageProxy.reloadConfigIfChanged();
 			try {
+				boolean waited = false;
+				while (true) {
+					Object mutex = null;
+					synchronized (JortageProxy.provisionalMaps) {
+						mutex = JortageProxy.provisionalMaps.get(identity, name);
+					}
+					if (mutex == null) break;
+					waited = true;
+					synchronized (mutex) {
+						try {
+							mutex.wait();
+						} catch (InterruptedException e) {}
+					}
+				}
+				if (waited) {
+					response.setHeader("Jortage-Waited", "true");
+				}
 				String hash = Queries.getMap(JortageProxy.dataSource, identity, name).toString();
 				BlobAccess ba = JortageProxy.backingBlobStore.getBlobAccess(JortageProxy.bucket, JortageProxy.hashToPath(hash));
 				if (ba != BlobAccess.PUBLIC_READ) {

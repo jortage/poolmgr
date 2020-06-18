@@ -138,8 +138,6 @@ public class RivetTest {
 		mac.update((target+":"+accessKey+":"+date+":"+payloadStr).getBytes(Charsets.UTF_8));
 		byte[] macBys = mac.doFinal();
 		String auth = accessKey+":"+BaseEncoding.base64().encode(macBys)+":"+date;
-		System.out.println(auth);
-		if (Integer.valueOf(4) == 4) return;
 		try (Response res = client.newCall(new Request.Builder()
 				.url(HOST+target)
 				.post(signPayload ? RequestBody.create(payloadBytes, MediaType.parse(contentType))

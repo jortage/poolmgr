@@ -12,6 +12,9 @@
 		secretAccessKey: "SECRET_ACCESS_KEY"
 		bucket: "mybucket-backup"
 	}
+	rivet: {
+		enabled: true
+	}
 	mysql: {
 		host: "localhost"
 		port: 3306
