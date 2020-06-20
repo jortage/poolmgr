@@ -195,6 +195,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public String putBlob(String container, Blob blob) {
+		JortageProxy.checkReadOnly();
 		checkContainer(container);
 		String blobName = blob.getMetadata().getName();
 		if (isDump(blobName)) {
@@ -249,6 +250,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public String copyBlob(String fromContainer, String fromName, String toContainer, String toName, CopyOptions options) {
+		JortageProxy.checkReadOnly();
 		checkContainer(fromContainer);
 		checkContainer(toContainer);
 		if (isDump(fromName)) {
@@ -263,6 +265,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public MultipartUpload initiateMultipartUpload(String container, BlobMetadata blobMetadata, PutOptions options) {
+		JortageProxy.checkReadOnly();
 		checkContainer(container);
 		if (isDump(blobMetadata.getName())) {
 			return dumpsStore.initiateMultipartUpload(container, blobMetadata, new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ));
@@ -288,6 +291,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public void abortMultipartUpload(MultipartUpload mpu) {
+		JortageProxy.checkReadOnly();
 		if (isDump(mpu.blobName())) {
 			checkContainer(mpu.containerName());
 			dumpsStore.abortMultipartUpload(mpu);
@@ -298,6 +302,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public String completeMultipartUpload(MultipartUpload mpu, List<MultipartPart> parts) {
+		JortageProxy.checkReadOnly();
 		if (isDump(mpu.blobName())) {
 			checkContainer(mpu.containerName());
 			return dumpsStore.completeMultipartUpload(mpu, parts);
@@ -342,6 +347,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public MultipartPart uploadMultipartPart(MultipartUpload mpu, int partNumber, Payload payload) {
+		JortageProxy.checkReadOnly();
 		if (isDump(mpu.blobName())) {
 			checkContainer(mpu.containerName());
 			return dumpsStore.uploadMultipartPart(mpu, partNumber, payload);
@@ -378,6 +384,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public void removeBlob(String container, String name) {
+		JortageProxy.checkReadOnly();
 		checkContainer(container);
 		if (isDump(name)) {
 			dumpsStore.removeBlob(container, name);
@@ -410,6 +417,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public boolean createContainerInLocation(Location location, String container) {
+		JortageProxy.checkReadOnly();
 		checkContainer(container);
 		return true;
 	}
@@ -417,6 +425,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 	@Override
 	public boolean createContainerInLocation(Location location,
 			String container, CreateContainerOptions createContainerOptions) {
+		JortageProxy.checkReadOnly();
 		checkContainer(container);
 		return true;
 	}

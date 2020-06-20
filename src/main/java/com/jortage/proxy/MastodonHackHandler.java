@@ -26,9 +26,10 @@ public class MastodonHackHandler extends HandlerWrapper {
 	public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
 		String ua = request.getHeader("User-Agent");
 		ScheduledFuture<?> shortCircuit = null;
-		if (ua != null && ua.contains("Mastodon") && !ua.contains("Pleroma")
-				&& request.getHeader("Jortage-Dont202") == null && request.getMethod().equals("POST")) {
-			// Mastodon's uploader has an extremely short timeout.
+		if (!JortageProxy.readOnly && ua != null && ua.contains("aws-sdk-ruby") && request.getHeader("Jortage-Dont202") == null
+				&& request.getQueryString() == null && request.getHeader("x-amz-copy-source") == null
+				&& (request.getMethod().equals("POST") || request.getMethod().equals("PUT"))) {
+			// Mastodon's uploader has a very short timeout.
 			// Wait a short while, and if the response still hasn't been committed, send a 202 to avoid the timeout.
 			shortCircuit = sched.schedule(() -> {
 				try {
@@ -38,10 +39,10 @@ public class MastodonHackHandler extends HandlerWrapper {
 						} catch (InterruptedException e) {
 						}
 					}
-					response.setStatus(202);
+					response.sendError(202);
 				} catch (IOException e) {
 				}
-			}, 1000, TimeUnit.MILLISECONDS);
+			}, 500, TimeUnit.MILLISECONDS);
 		}
 		super.handle(target, baseRequest, request, response);
 		if (shortCircuit != null) shortCircuit.cancel(false);

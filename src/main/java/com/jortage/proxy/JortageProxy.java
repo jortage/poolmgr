@@ -26,6 +26,7 @@ import org.jclouds.filesystem.reference.FilesystemConstants;
 import org.jclouds.logging.slf4j.config.SLF4JLoggingModule;
 import org.mariadb.jdbc.MariaDbPoolDataSource;
 
+import com.google.common.base.MoreObjects;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.HashBasedTable;
 import com.google.common.collect.ImmutableList;
@@ -50,6 +51,7 @@ public class JortageProxy {
 	public static String backupBucket;
 	public static String publicHost;
 	public static MariaDbPoolDataSource dataSource;
+	public static volatile boolean readOnly = false;
 	private static boolean backingUp = false;
 	private static boolean rivetEnabled;
 	private static boolean rivetState;
@@ -209,6 +211,7 @@ public class JortageProxy {
 			String bucketTmp = ((JsonPrimitive)configTmp.getObject("backend").get("bucket")).asString();
 			String publicHostTmp = ((JsonPrimitive)configTmp.getObject("backend").get("publicHost")).asString();
 			boolean rivetEnabledTmp = configTmp.recursiveGet(boolean.class, "rivet.enabled");
+			boolean readOnlyTmp = MoreObjects.firstNonNull(configTmp.get(boolean.class, "readOnly"), false);
 			System.err.print(prelude+"Constructing blob stores...");
 			System.err.flush();
 			BlobStore backingBlobStoreTmp = createBlobStore(configTmp.getObject("backend"));
@@ -263,7 +266,7 @@ public class JortageProxy {
 						"  PRIMARY KEY (`hash`)\n" +
 						") ROW_FORMAT=COMPRESSED;");
 			}
-			System.err.println("\r"+(reloading ? "Reloading" : "Loading")+" config... done");
+			System.err.println("\r"+(reloading ? "Reloading" : "Loading")+" config... done                  ");
 			MariaDbPoolDataSource oldDataSource = dataSource;
 			config = configTmp;
 			configFileLastLoaded = configFileLastLoadedTmp;
@@ -277,6 +280,7 @@ public class JortageProxy {
 			if (rivetState != rivetEnabled && reloading) {
 				System.err.println("WARNING: Cannot hot-"+(rivetEnabled ? "enable" : "disable")+" Rivet. jortage-proxy must be restarted for this change to take effect.");
 			}
+			readOnly = readOnlyTmp;
 			if (oldDataSource != null) {
 				oldDataSource.close();
 			}
@@ -309,6 +313,10 @@ public class JortageProxy {
 
 	public static String hashToPath(String hash) {
 		return "blobs/"+hash.substring(0, 1)+"/"+hash.substring(1, 4)+"/"+hash;
+	}
+
+	public static void checkReadOnly() {
+		if (readOnly) throw new IllegalStateException("Currently in read-only maintenance mode; try again later");
 	}
 
 }

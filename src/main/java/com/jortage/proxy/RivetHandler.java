@@ -247,6 +247,11 @@ public final class RivetHandler extends AbstractHandler {
 	public void handle(String target, org.eclipse.jetty.server.Request baseRequest, HttpServletRequest req, HttpServletResponse res) throws IOException, ServletException {
 		baseRequest.setHandled(true);
 		if ("/retrieve".equals(target)) {
+			JortageProxy.reloadConfigIfChanged();
+			if (JortageProxy.readOnly) {
+				jsonError(res, 503, "Currently in read-only maintenance mode; try again later");
+				return;
+			}
 			RivetRequest rreq = authenticateAndParse(target, "POST", "application/json; charset=utf-8", true, req, res);
 			if (rreq == null) return;
 			if (!rreq.json.has("sourceUrl")) {
@@ -317,6 +322,11 @@ public final class RivetHandler extends AbstractHandler {
 				return;
 			}
 		} else if (target.startsWith("/upload/")) {
+			JortageProxy.reloadConfigIfChanged();
+			if (JortageProxy.readOnly) {
+				jsonError(res, 503, "Currently in read-only maintenance mode; try again later");
+				return;
+			}
 			String expect = req.getHeader("Expect");
 			if (expect == null || !expect.equals("100-continue")) {
 				jsonError(res, 400, "Must expect continue");
@@ -447,7 +457,6 @@ public final class RivetHandler extends AbstractHandler {
 				return null;
 			}
 			
-			JortageProxy.reloadConfigIfChanged();
 			if (!JortageProxy.config.containsKey("users") || !JortageProxy.config.getObject("users").containsKey(identity)) {
 				jsonError(res, 401, "Rivet-Auth header invalid (Bad access ID)");
 				return null;
