@@ -1,4 +1,4 @@
-package com.jortage.proxy;
+package com.jortage.poolmgr;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;

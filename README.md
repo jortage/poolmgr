@@ -1,4 +1,4 @@
-# Jortage Storage Pool Proxy
+# Jortage Storage Pool Manager
 A miniature S3-to-S3 proxy that accepts incoming requests, hashes the uploaded
 file, stores their desired path in a MariaDB database, along with the hash, and 
 then uploads the original file to a backing S3 server named after the

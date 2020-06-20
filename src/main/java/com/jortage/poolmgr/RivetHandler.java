@@ -1,4 +1,4 @@
-package com.jortage.proxy;
+package com.jortage.poolmgr;
 
 import static com.google.common.base.Verify.verify;
 
@@ -141,20 +141,20 @@ public final class RivetHandler extends AbstractHandler {
 									hos.close();
 									HashCode hash = hos.hash();
 									String hashStr = hash.toString();
-									String path = JortageProxy.hashToPath(hashStr);
-									if (Queries.isMapped(JortageProxy.dataSource, hash)) {
+									String path = Poolmgr.hashToPath(hashStr);
+									if (Queries.isMapped(Poolmgr.dataSource, hash)) {
 										results.put(url, new Pair<>(RivetResult.PRESENT, Temperature.COLD));
 									} else {
-										Blob blob = JortageProxy.backingBlobStore.blobBuilder(path)
+										Blob blob = Poolmgr.backingBlobStore.blobBuilder(path)
 												.payload(bss.getSource())
 												.contentLength(bss.getSource().size())
 												.contentType(getRes.body().contentType().toString())
 												.build();
 										long size = bss.getSource().size();
-										JortageProxy.backingBlobStore.putBlob(JortageProxy.bucket, blob,
+										Poolmgr.backingBlobStore.putBlob(Poolmgr.bucket, blob,
 												new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ).multipart(size > 8192));
-										Queries.putPendingBackup(JortageProxy.dataSource, hash);
-										Queries.putFilesize(JortageProxy.dataSource, hash, size);
+										Queries.putPendingBackup(Poolmgr.dataSource, hash);
+										Queries.putFilesize(Poolmgr.dataSource, hash, size);
 										results.put(url, new Pair<>(RivetResult.ADDED, Temperature.FREEZING));
 									}
 									return hash;
@@ -171,7 +171,7 @@ public final class RivetHandler extends AbstractHandler {
 				}
 
 				private HashCode checkShortCircuit(String originalUrl, HttpUrl url, Temperature temp) {
-					String publicHost = JortageProxy.config.getObject("backend").get(String.class, "publicHost").replaceFirst("^https?://", "");
+					String publicHost = Poolmgr.config.getObject("backend").get(String.class, "publicHost").replaceFirst("^https?://", "");
 					String fullHost = url.host();
 					if (url.port() != (url.scheme().equals("https") ? 443 : 80)) {
 						fullHost = fullHost+":"+url.port();
@@ -183,7 +183,7 @@ public final class RivetHandler extends AbstractHandler {
 							String hashStr = segments.get(3);
 							if (hashStr.startsWith(prelude) && HEX_MATCHER.matchesAllOf(hashStr)) {
 								HashCode hash = HashCode.fromString(hashStr);
-								if (Queries.isMapped(JortageProxy.dataSource, hash)) {
+								if (Queries.isMapped(Poolmgr.dataSource, hash)) {
 									results.put(originalUrl, new Pair<>(RivetResult.FOUND, temp));
 									return hash;
 								}
@@ -247,8 +247,8 @@ public final class RivetHandler extends AbstractHandler {
 	public void handle(String target, org.eclipse.jetty.server.Request baseRequest, HttpServletRequest req, HttpServletResponse res) throws IOException, ServletException {
 		baseRequest.setHandled(true);
 		if ("/retrieve".equals(target)) {
-			JortageProxy.reloadConfigIfChanged();
-			if (JortageProxy.readOnly) {
+			Poolmgr.reloadConfigIfChanged();
+			if (Poolmgr.readOnly) {
 				jsonError(res, 503, "Currently in read-only maintenance mode; try again later");
 				return;
 			}
@@ -308,7 +308,7 @@ public final class RivetHandler extends AbstractHandler {
 				}
 			}
 			try {
-				Queries.putMap(JortageProxy.dataSource, rreq.identity, destinationPath, hash);
+				Queries.putMap(Poolmgr.dataSource, rreq.identity, destinationPath, hash);
 				res.setStatus(200);
 				JsonObject obj = new JsonObject();
 				JsonObject result = new JsonObject();
@@ -322,8 +322,8 @@ public final class RivetHandler extends AbstractHandler {
 				return;
 			}
 		} else if (target.startsWith("/upload/")) {
-			JortageProxy.reloadConfigIfChanged();
-			if (JortageProxy.readOnly) {
+			Poolmgr.reloadConfigIfChanged();
+			if (Poolmgr.readOnly) {
 				jsonError(res, 503, "Currently in read-only maintenance mode; try again later");
 				return;
 			}
@@ -344,7 +344,7 @@ public final class RivetHandler extends AbstractHandler {
 				HashCode hash = HashCode.fromString(hashStr);
 				RivetResult rres;
 				Temperature temp;
-				if (Queries.isMapped(JortageProxy.dataSource, hash)) {
+				if (Queries.isMapped(Poolmgr.dataSource, hash)) {
 					rres = RivetResult.FOUND;
 					temp = Temperature.HOT;
 				} else {
@@ -368,23 +368,23 @@ public final class RivetHandler extends AbstractHandler {
 							jsonError(res, 400, "Hash of body ("+realHash+") did not match hash in query ("+hash+")");
 							return;
 						}
-						Blob blob = JortageProxy.backingBlobStore.blobBuilder(JortageProxy.hashToPath(hash.toString()))
+						Blob blob = Poolmgr.backingBlobStore.blobBuilder(Poolmgr.hashToPath(hash.toString()))
 								.payload(bss.getSource())
 								.contentLength(bss.getSource().size())
 								.contentType(req.getContentType())
 								.build();
 						long size = bss.getSource().size();
-						JortageProxy.backingBlobStore.putBlob(JortageProxy.bucket, blob,
+						Poolmgr.backingBlobStore.putBlob(Poolmgr.bucket, blob,
 								new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ).multipart(size > 8192));
-						Queries.putPendingBackup(JortageProxy.dataSource, hash);
-						Queries.putFilesize(JortageProxy.dataSource, hash, size);
+						Queries.putPendingBackup(Poolmgr.dataSource, hash);
+						Queries.putFilesize(Poolmgr.dataSource, hash, size);
 						rres = RivetResult.ADDED;
 						temp = Temperature.FREEZING;
 					} finally {
 						if (bss != null) bss.close();
 					}
 				}
-				Queries.putMap(JortageProxy.dataSource, rreq.identity, path, hash);
+				Queries.putMap(Poolmgr.dataSource, rreq.identity, path, hash);
 				res.setStatus(200);
 				JsonObject obj = new JsonObject();
 				JsonObject result = new JsonObject();
@@ -457,7 +457,7 @@ public final class RivetHandler extends AbstractHandler {
 				return null;
 			}
 			
-			if (!JortageProxy.config.containsKey("users") || !JortageProxy.config.getObject("users").containsKey(identity)) {
+			if (!Poolmgr.config.containsKey("users") || !Poolmgr.config.getObject("users").containsKey(identity)) {
 				jsonError(res, 401, "Rivet-Auth header invalid (Bad access ID)");
 				return null;
 			}
@@ -490,7 +490,7 @@ public final class RivetHandler extends AbstractHandler {
 			}
 			String payloadStr = new String(payload, Charsets.UTF_8);
 			
-			String key = JortageProxy.config.getObject("users").get(String.class, identity);
+			String key = Poolmgr.config.getObject("users").get(String.class, identity);
 			assertSuccess(() -> mac.init(new SecretKeySpec(key.getBytes(Charsets.UTF_8), "RAW")));
 			String query;
 			if (req.getQueryString() == null) {

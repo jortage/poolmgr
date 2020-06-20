@@ -1,4 +1,4 @@
-package com.jortage.proxy;
+package com.jortage.poolmgr;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -69,7 +69,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	private String getMapPath(String container, String name) {
 		checkContainer(container);
-		return JortageProxy.hashToPath(Queries.getMap(dataSource, container, name).toString());
+		return Poolmgr.hashToPath(Queries.getMap(dataSource, container, name).toString());
 	}
 
 	private boolean isDump(String name) {
@@ -195,7 +195,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public String putBlob(String container, Blob blob) {
-		JortageProxy.checkReadOnly();
+		Poolmgr.checkReadOnly();
 		checkContainer(container);
 		String blobName = blob.getMetadata().getName();
 		if (isDump(blobName)) {
@@ -203,8 +203,8 @@ public class JortageBlobStore extends ForwardingBlobStore {
 		}
 		File tempFile = null;
 		Object mutex = new Object();
-		synchronized (JortageProxy.provisionalMaps) {
-			JortageProxy.provisionalMaps.put(identity, blobName, mutex);
+		synchronized (Poolmgr.provisionalMaps) {
+			Poolmgr.provisionalMaps.put(identity, blobName, mutex);
 		}
 		try {
 			File f = File.createTempFile("jortage-proxy-", ".dat");
@@ -220,12 +220,12 @@ public class JortageBlobStore extends ForwardingBlobStore {
 			String hashString = hash.toString();
 			try (Payload payload = new FilePayload(f)) {
 				payload.getContentMetadata().setContentType(contentType);
-				if (delegate().blobExists(bucket, JortageProxy.hashToPath(hashString))) {
-					String etag = delegate().blobMetadata(bucket, JortageProxy.hashToPath(hashString)).getETag();
+				if (delegate().blobExists(bucket, Poolmgr.hashToPath(hashString))) {
+					String etag = delegate().blobMetadata(bucket, Poolmgr.hashToPath(hashString)).getETag();
 					Queries.putMap(dataSource, identity, blobName, hash);
 					return etag;
 				}
-				Blob blob2 = blobBuilder(JortageProxy.hashToPath(hashString))
+				Blob blob2 = blobBuilder(Poolmgr.hashToPath(hashString))
 						.payload(payload)
 						.userMetadata(blob.getMetadata().getUserMetadata())
 						.build();
@@ -239,8 +239,8 @@ public class JortageBlobStore extends ForwardingBlobStore {
 			throw new UncheckedIOException(e);
 		} finally {
 			if (tempFile != null) tempFile.delete();
-			synchronized (JortageProxy.provisionalMaps) {
-				JortageProxy.provisionalMaps.remove(identity, blobName);
+			synchronized (Poolmgr.provisionalMaps) {
+				Poolmgr.provisionalMaps.remove(identity, blobName);
 			}
 			synchronized (mutex) {
 				mutex.notifyAll();
@@ -250,7 +250,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public String copyBlob(String fromContainer, String fromName, String toContainer, String toName, CopyOptions options) {
-		JortageProxy.checkReadOnly();
+		Poolmgr.checkReadOnly();
 		checkContainer(fromContainer);
 		checkContainer(toContainer);
 		if (isDump(fromName)) {
@@ -260,12 +260,12 @@ public class JortageBlobStore extends ForwardingBlobStore {
 		// javadoc says options are ignored, so we ignore them too
 		HashCode hash = Queries.getMap(dataSource, identity, fromName);
 		Queries.putMap(dataSource, identity, toName, hash);
-		return blobMetadata(bucket, JortageProxy.hashToPath(hash.toString())).getETag();
+		return blobMetadata(bucket, Poolmgr.hashToPath(hash.toString())).getETag();
 	}
 
 	@Override
 	public MultipartUpload initiateMultipartUpload(String container, BlobMetadata blobMetadata, PutOptions options) {
-		JortageProxy.checkReadOnly();
+		Poolmgr.checkReadOnly();
 		checkContainer(container);
 		if (isDump(blobMetadata.getName())) {
 			return dumpsStore.initiateMultipartUpload(container, blobMetadata, new PutOptions().setBlobAccess(BlobAccess.PUBLIC_READ));
@@ -291,7 +291,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public void abortMultipartUpload(MultipartUpload mpu) {
-		JortageProxy.checkReadOnly();
+		Poolmgr.checkReadOnly();
 		if (isDump(mpu.blobName())) {
 			checkContainer(mpu.containerName());
 			dumpsStore.abortMultipartUpload(mpu);
@@ -302,7 +302,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public String completeMultipartUpload(MultipartUpload mpu, List<MultipartPart> parts) {
-		JortageProxy.checkReadOnly();
+		Poolmgr.checkReadOnly();
 		if (isDump(mpu.blobName())) {
 			checkContainer(mpu.containerName());
 			return dumpsStore.completeMultipartUpload(mpu, parts);
@@ -316,7 +316,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 			ByteStreams.copy(stream, hos);
 			HashCode hash = hos.hash();
 			String hashStr = hash.toString();
-			String path = JortageProxy.hashToPath(hashStr);
+			String path = Poolmgr.hashToPath(hashStr);
 			// we're about to do a bunch of stuff at once
 			// sleep so we don't fall afoul of request rate limits
 			// (causes intermittent 429s on at least DigitalOcean)
@@ -347,7 +347,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public MultipartPart uploadMultipartPart(MultipartUpload mpu, int partNumber, Payload payload) {
-		JortageProxy.checkReadOnly();
+		Poolmgr.checkReadOnly();
 		if (isDump(mpu.blobName())) {
 			checkContainer(mpu.containerName());
 			return dumpsStore.uploadMultipartPart(mpu, partNumber, payload);
@@ -384,7 +384,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public void removeBlob(String container, String name) {
-		JortageProxy.checkReadOnly();
+		Poolmgr.checkReadOnly();
 		checkContainer(container);
 		if (isDump(name)) {
 			dumpsStore.removeBlob(container, name);
@@ -395,7 +395,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 			int rc = Queries.getMapCount(dataSource, hc);
 			if (rc == 0) {
 				String hashString = hc.toString();
-				String path = JortageProxy.hashToPath(hashString);
+				String path = Poolmgr.hashToPath(hashString);
 				delegate().removeBlob(bucket, path);
 				Queries.removeFilesize(dataSource, hc);
 				Queries.removePendingBackup(dataSource, hc);
@@ -417,7 +417,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public boolean createContainerInLocation(Location location, String container) {
-		JortageProxy.checkReadOnly();
+		Poolmgr.checkReadOnly();
 		checkContainer(container);
 		return true;
 	}
@@ -425,7 +425,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 	@Override
 	public boolean createContainerInLocation(Location location,
 			String container, CreateContainerOptions createContainerOptions) {
-		JortageProxy.checkReadOnly();
+		Poolmgr.checkReadOnly();
 		checkContainer(container);
 		return true;
 	}

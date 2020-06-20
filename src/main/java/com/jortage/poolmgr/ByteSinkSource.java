@@ -1,4 +1,4 @@
-package com.jortage.proxy;
+package com.jortage.poolmgr;
 
 import java.io.Closeable;
 import com.google.common.io.ByteSink;

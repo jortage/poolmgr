@@ -48,5 +48,5 @@ project.configurations.implementation.setCanBeResolved(true)
 
 task capsule(type: FatCapsule) {
 	embedConfiguration configurations.implementation
-	applicationClass 'com.jortage.proxy.JortageProxy'
+	applicationClass 'com.jortage.poolmgr.Poolmgr'
 }

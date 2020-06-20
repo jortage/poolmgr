@@ -1,4 +1,4 @@
-package com.jortage.proxy;
+package com.jortage.poolmgr;
 
 import java.io.IOException;
 import java.util.concurrent.Executors;
@@ -26,7 +26,7 @@ public class MastodonHackHandler extends HandlerWrapper {
 	public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
 		String ua = request.getHeader("User-Agent");
 		ScheduledFuture<?> shortCircuit = null;
-		if (!JortageProxy.readOnly && ua != null && ua.contains("aws-sdk-ruby") && request.getHeader("Jortage-Dont202") == null
+		if (!Poolmgr.readOnly && ua != null && ua.contains("aws-sdk-ruby") && request.getHeader("Jortage-Dont202") == null
 				&& request.getQueryString() == null && request.getHeader("x-amz-copy-source") == null
 				&& (request.getMethod().equals("POST") || request.getMethod().equals("PUT"))) {
 			// Mastodon's uploader has a very short timeout.

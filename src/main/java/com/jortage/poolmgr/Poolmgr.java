@@ -1,4 +1,4 @@
-package com.jortage.proxy;
+package com.jortage.poolmgr;
 
 import java.io.File;
 import java.lang.reflect.Field;
@@ -40,7 +40,7 @@ import blue.endless.jankson.Jankson;
 import blue.endless.jankson.JsonObject;
 import blue.endless.jankson.JsonPrimitive;
 
-public class JortageProxy {
+public class Poolmgr {
 
 	private static final File configFile = new File("config.jkson");
 	public static JsonObject config;
@@ -185,7 +185,7 @@ public class JortageProxy {
 			} catch (Exception e) {
 				System.err.println("failed");
 			}
-			System.err.println("This proxy has Super Denim Powers. (Done in "+initSw+")");
+			System.err.println("This Poolmgr has Super Denim Powers. (Done in "+initSw+")");
 		} catch (Throwable t) {
 			System.err.println(" failed");
 			t.printStackTrace();

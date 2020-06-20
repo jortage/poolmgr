@@ -1,4 +1,4 @@
-package com.jortage.proxy;
+package com.jortage.poolmgr;
 
 import java.io.IOException;
 import java.util.List;
@@ -49,13 +49,13 @@ public final class RedirHandler extends AbstractHandler {
 				}
 				return;
 			}
-			JortageProxy.reloadConfigIfChanged();
+			Poolmgr.reloadConfigIfChanged();
 			try {
 				boolean waited = false;
 				while (true) {
 					Object mutex = null;
-					synchronized (JortageProxy.provisionalMaps) {
-						mutex = JortageProxy.provisionalMaps.get(identity, name);
+					synchronized (Poolmgr.provisionalMaps) {
+						mutex = Poolmgr.provisionalMaps.get(identity, name);
 					}
 					if (mutex == null) break;
 					waited = true;
@@ -68,13 +68,13 @@ public final class RedirHandler extends AbstractHandler {
 				if (waited) {
 					response.setHeader("Jortage-Waited", "true");
 				}
-				String hash = Queries.getMap(JortageProxy.dataSource, identity, name).toString();
-				BlobAccess ba = JortageProxy.backingBlobStore.getBlobAccess(JortageProxy.bucket, JortageProxy.hashToPath(hash));
+				String hash = Queries.getMap(Poolmgr.dataSource, identity, name).toString();
+				BlobAccess ba = Poolmgr.backingBlobStore.getBlobAccess(Poolmgr.bucket, Poolmgr.hashToPath(hash));
 				if (ba != BlobAccess.PUBLIC_READ) {
-					JortageProxy.backingBlobStore.setBlobAccess(JortageProxy.bucket, JortageProxy.hashToPath(hash), BlobAccess.PUBLIC_READ);
+					Poolmgr.backingBlobStore.setBlobAccess(Poolmgr.bucket, Poolmgr.hashToPath(hash), BlobAccess.PUBLIC_READ);
 				}
 				response.setHeader("Cache-Control", "public");
-				response.setHeader("Location", JortageProxy.publicHost+"/"+JortageProxy.hashToPath(hash));
+				response.setHeader("Location", Poolmgr.publicHost+"/"+Poolmgr.hashToPath(hash));
 				response.setStatus(301);
 			} catch (IllegalArgumentException e) {
 				response.sendError(404);
