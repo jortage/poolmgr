@@ -42,7 +42,7 @@ public class MastodonHackHandler extends HandlerWrapper {
 					response.sendError(202);
 				} catch (IOException e) {
 				}
-			}, 500, TimeUnit.MILLISECONDS);
+			}, 4000, TimeUnit.MILLISECONDS);
 		}
 		super.handle(target, baseRequest, request, response);
 		if (shortCircuit != null) shortCircuit.cancel(false);

@@ -9,7 +9,6 @@ import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.jclouds.blobstore.BlobStore;
 import org.jclouds.blobstore.domain.Blob;
-import org.jclouds.blobstore.domain.BlobAccess;
 import com.google.common.base.Splitter;
 import com.google.common.io.ByteStreams;
 
@@ -69,10 +68,6 @@ public final class RedirHandler extends AbstractHandler {
 					response.setHeader("Jortage-Waited", "true");
 				}
 				String hash = Queries.getMap(Poolmgr.dataSource, identity, name).toString();
-				BlobAccess ba = Poolmgr.backingBlobStore.getBlobAccess(Poolmgr.bucket, Poolmgr.hashToPath(hash));
-				if (ba != BlobAccess.PUBLIC_READ) {
-					Poolmgr.backingBlobStore.setBlobAccess(Poolmgr.bucket, Poolmgr.hashToPath(hash), BlobAccess.PUBLIC_READ);
-				}
 				response.setHeader("Cache-Control", "public");
 				response.setHeader("Location", Poolmgr.publicHost+"/"+Poolmgr.hashToPath(hash));
 				response.setStatus(301);

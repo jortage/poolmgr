@@ -37,6 +37,11 @@ public class Queries {
 		return sfn;
 	}
 	
+	private static void onSQLException(SQLException e) {
+		e.printStackTrace();
+		System.err.println("Got SQL exception!");
+	}
+	
 	public static HashCode getMap(DataSource dataSource, String identity, String name) {
 		name = toSFN(name);
 		try (Connection c = dataSource.getConnection()) {
@@ -52,6 +57,7 @@ public class Queries {
 				}
 			}
 		} catch (SQLException e) {
+			onSQLException(e);
 			throw new RuntimeException(e);
 		}
 	}
@@ -67,6 +73,7 @@ public class Queries {
 				ps.executeUpdate();
 			}
 		} catch (SQLException e) {
+			onSQLException(e);
 			throw new RuntimeException(e);
 		}
 	}
@@ -80,6 +87,7 @@ public class Queries {
 				return ps.executeUpdate() > 0;
 			}
 		} catch (SQLException e) {
+			onSQLException(e);
 			throw new RuntimeException(e);
 		}
 	}
@@ -97,6 +105,7 @@ public class Queries {
 				}
 			}
 		} catch (SQLException e) {
+			onSQLException(e);
 			throw new RuntimeException(e);
 		}
 	}
@@ -110,6 +119,7 @@ public class Queries {
 				}
 			}
 		} catch (SQLException e) {
+			onSQLException(e);
 			throw new RuntimeException(e);
 		}
 	}
@@ -122,6 +132,7 @@ public class Queries {
 				ps.executeUpdate();
 			}
 		} catch (SQLException e) {
+			onSQLException(e);
 			throw new RuntimeException(e);
 		}
 	}
@@ -144,6 +155,7 @@ public class Queries {
 				ps.executeUpdate();
 			}
 		} catch (SQLException e) {
+			onSQLException(e);
 			throw new RuntimeException(e);
 		}
 	}
@@ -155,6 +167,7 @@ public class Queries {
 				ps.executeUpdate();
 			}
 		} catch (SQLException e) {
+			onSQLException(e);
 			throw new RuntimeException(e);
 		}
 	}
@@ -170,6 +183,7 @@ public class Queries {
 				ps.executeUpdate();
 			}
 		} catch (SQLException e) {
+			onSQLException(e);
 			throw new RuntimeException(e);
 		}
 	}
@@ -189,6 +203,7 @@ public class Queries {
 				}
 			}
 		} catch (SQLException e) {
+			onSQLException(e);
 			throw new RuntimeException(e);
 		}
 	}
@@ -206,6 +221,7 @@ public class Queries {
 				}
 			}
 		} catch (SQLException e) {
+			onSQLException(e);
 			throw new RuntimeException(e);
 		}
 	}
@@ -217,6 +233,7 @@ public class Queries {
 				ps.executeUpdate();
 			}
 		} catch (SQLException e) {
+			onSQLException(e);
 			throw new RuntimeException(e);
 		}
 	}
