@@ -220,8 +220,9 @@ public class JortageBlobStore extends ForwardingBlobStore {
 			String hashString = hash.toString();
 			try (Payload payload = new FilePayload(f)) {
 				payload.getContentMetadata().setContentType(contentType);
-				if (delegate().blobExists(bucket, Poolmgr.hashToPath(hashString))) {
-					String etag = delegate().blobMetadata(bucket, Poolmgr.hashToPath(hashString)).getETag();
+				BlobMetadata meta = delegate().blobMetadata(bucket, Poolmgr.hashToPath(hashString));
+				if (meta != null) {
+					String etag = meta.getETag();
 					Queries.putMap(dataSource, identity, blobName, hash);
 					return etag;
 				}
@@ -302,47 +303,52 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	@Override
 	public String completeMultipartUpload(MultipartUpload mpu, List<MultipartPart> parts) {
-		Poolmgr.checkReadOnly();
-		if (isDump(mpu.blobName())) {
-			checkContainer(mpu.containerName());
-			return dumpsStore.completeMultipartUpload(mpu, parts);
-		}
-		mpu = mask(mpu);
-		// TODO this is a bit of a hack and isn't very efficient
-		String etag = delegate().completeMultipartUpload(mpu, parts);
-		try (InputStream stream = delegate().getBlob(mpu.containerName(), mpu.blobName()).getPayload().openStream()) {
-			CountingOutputStream counter = new CountingOutputStream(ByteStreams.nullOutputStream());
-			HashingOutputStream hos = new HashingOutputStream(Hashing.sha512(), counter);
-			ByteStreams.copy(stream, hos);
-			HashCode hash = hos.hash();
-			String hashStr = hash.toString();
-			String path = Poolmgr.hashToPath(hashStr);
-			// we're about to do a bunch of stuff at once
-			// sleep so we don't fall afoul of request rate limits
-			// (causes intermittent 429s on at least DigitalOcean)
-			Thread.sleep(250);
-			BlobMetadata meta = delegate().blobMetadata(mpu.containerName(), mpu.blobName());
-			if (!delegate().blobExists(bucket, path)) {
-				Thread.sleep(250);
-				etag = delegate().copyBlob(mpu.containerName(), mpu.blobName(), bucket, path, CopyOptions.builder().contentMetadata(meta.getContentMetadata()).build());
-				Thread.sleep(250);
-				delegate().setBlobAccess(bucket, path, BlobAccess.PUBLIC_READ);
-				Queries.putPendingBackup(dataSource, hash);
-			} else {
-				Thread.sleep(250);
-				etag = delegate().blobMetadata(bucket, path).getETag();
+		try {
+			Poolmgr.checkReadOnly();
+			if (isDump(mpu.blobName())) {
+				checkContainer(mpu.containerName());
+				return dumpsStore.completeMultipartUpload(mpu, parts);
 			}
-			Queries.putMap(dataSource, identity, Preconditions.checkNotNull(meta.getUserMetadata().get("jortage-originalname")), hash);
-			Queries.putFilesize(dataSource, hash, counter.getCount());
-			Queries.removeMultipart(dataSource, mpu.blobName());
-			Thread.sleep(250);
-			delegate().removeBlob(mpu.containerName(), mpu.blobName());
-		} catch (IOException e) {
-			throw new UncheckedIOException(e);
-		} catch (InterruptedException e) {
-			throw new RuntimeException(e);
+			mpu = mask(mpu);
+			// TODO this is a bit of a hack and isn't very efficient
+			String etag = delegate().completeMultipartUpload(mpu, parts);
+			try (InputStream stream = delegate().getBlob(mpu.containerName(), mpu.blobName()).getPayload().openStream()) {
+				CountingOutputStream counter = new CountingOutputStream(ByteStreams.nullOutputStream());
+				HashingOutputStream hos = new HashingOutputStream(Hashing.sha512(), counter);
+				ByteStreams.copy(stream, hos);
+				HashCode hash = hos.hash();
+				String hashStr = hash.toString();
+				String path = Poolmgr.hashToPath(hashStr);
+				// we're about to do a bunch of stuff at once
+				// sleep so we don't fall afoul of request rate limits
+				// (causes intermittent 429s on at least DigitalOcean)
+				Thread.sleep(100);
+				BlobMetadata meta = delegate().blobMetadata(mpu.containerName(), mpu.blobName());
+				if (meta == null) {
+					Thread.sleep(100);
+					etag = delegate().copyBlob(mpu.containerName(), mpu.blobName(), bucket, path, CopyOptions.builder().contentMetadata(meta.getContentMetadata()).build());
+					Thread.sleep(100);
+					delegate().setBlobAccess(bucket, path, BlobAccess.PUBLIC_READ);
+					Queries.putPendingBackup(dataSource, hash);
+				} else {
+					Thread.sleep(100);
+					etag = delegate().blobMetadata(bucket, path).getETag();
+				}
+				Queries.putMap(dataSource, identity, Preconditions.checkNotNull(meta.getUserMetadata().get("jortage-originalname")), hash);
+				Queries.putFilesize(dataSource, hash, counter.getCount());
+				Queries.removeMultipart(dataSource, mpu.blobName());
+				Thread.sleep(100);
+				delegate().removeBlob(mpu.containerName(), mpu.blobName());
+			} catch (IOException e) {
+				throw new UncheckedIOException(e);
+			} catch (InterruptedException e) {
+				throw new RuntimeException(e);
+			}
+			return etag;
+		} catch (Error | RuntimeException e) {
+			e.printStackTrace();
+			throw e;
 		}
-		return etag;
 	}
 
 	@Override
@@ -437,18 +443,13 @@ public class JortageBlobStore extends ForwardingBlobStore {
 
 	private static final String NO_DIR_MSG = "Directories are an illusion";
 	private static final String NO_BULK_MSG = "Bulk operations are not implemented by Jortage for safety and speed";
-	private static final String NO_PRIVATE_MSG = "Jortage does not support private objects";
 	
 	@Override
 	public void setContainerAccess(String container, ContainerAccess containerAccess) {
-		if (containerAccess != ContainerAccess.PUBLIC_READ)
-			throw new UnsupportedOperationException(NO_PRIVATE_MSG);
 	}
 	
 	@Override
 	public void setBlobAccess(String container, String name, BlobAccess access) {
-		if (access != BlobAccess.PUBLIC_READ)
-			throw new UnsupportedOperationException(NO_PRIVATE_MSG);
 	}
 
 	@Override

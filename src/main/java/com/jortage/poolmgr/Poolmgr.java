@@ -58,7 +58,6 @@ public class Poolmgr {
 	
 	public static final Table<String, String, Object> provisionalMaps = HashBasedTable.create();
 
-	@SuppressWarnings("restriction")
 	public static void main(String[] args) throws Exception {
 		try {
 			Stopwatch initSw = Stopwatch.createStarted();
@@ -71,6 +70,10 @@ public class Poolmgr {
 					.endpoint(URI.create("http://localhost:23278"))
 					.jettyMaxThreads(24)
 					.v4MaxNonChunkedRequestSize(128L*1024L*1024L)
+					// S3Proxy will throw if it sees an X-Amz header it doesn't recognize
+					// Misskey, starting in some recent version (as of July 2023) now sends an X-Amz-User-Agent header
+					// So without this, Misskey instances can't upload files. Cool thanks
+					.ignoreUnknownHeaders(true)
 					.build();
 			
 			// excuse me, this is mine now

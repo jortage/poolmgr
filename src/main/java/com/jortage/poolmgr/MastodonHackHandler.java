@@ -6,9 +6,9 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Request;
@@ -42,10 +42,13 @@ public class MastodonHackHandler extends HandlerWrapper {
 					response.sendError(202);
 				} catch (IOException e) {
 				}
-			}, 4000, TimeUnit.MILLISECONDS);
+			}, 2000, TimeUnit.MILLISECONDS);
 		}
-		super.handle(target, baseRequest, request, response);
-		if (shortCircuit != null) shortCircuit.cancel(false);
+		try {
+			super.handle(target, baseRequest, request, response);
+		} finally {
+			if (shortCircuit != null) shortCircuit.cancel(false);
+		}
 	}
 
 }
