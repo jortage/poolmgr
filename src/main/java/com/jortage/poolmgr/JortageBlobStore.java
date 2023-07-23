@@ -55,7 +55,6 @@ public class JortageBlobStore extends ForwardingBlobStore {
 	public JortageBlobStore(BlobStore blobStore, BlobStore dumpsStore, String bucket, String identity, DataSource dataSource) {
 		super(blobStore);
 		this.dumpsStore = dumpsStore;
-		dumpsStore.createContainerInLocation(null, identity);
 		this.bucket = bucket;
 		this.identity = identity;
 		this.dataSource = dataSource;

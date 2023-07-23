@@ -8,7 +8,11 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Map;
 import java.util.Properties;
+
+import javax.sql.DataSource;
+
 import sun.misc.Signal;
 
 import org.eclipse.jetty.server.Server;
@@ -24,12 +28,13 @@ import org.jclouds.blobstore.domain.BlobAccess;
 import org.jclouds.blobstore.options.PutOptions;
 import org.jclouds.filesystem.reference.FilesystemConstants;
 import org.jclouds.logging.slf4j.config.SLF4JLoggingModule;
-import org.mariadb.jdbc.MariaDbPoolDataSource;
+import com.zaxxer.hikari.HikariDataSource;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.HashBasedTable;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Table;
 import com.google.common.escape.Escaper;
@@ -37,20 +42,19 @@ import com.google.common.hash.HashCode;
 import com.google.common.net.UrlEscapers;
 
 import blue.endless.jankson.Jankson;
+import blue.endless.jankson.JsonElement;
 import blue.endless.jankson.JsonObject;
 import blue.endless.jankson.JsonPrimitive;
 
 public class Poolmgr {
 
 	private static final File configFile = new File("config.jkson");
-	public static JsonObject config;
 	public static long configFileLastLoaded;
-	public static BlobStore backingBlobStore;
-	public static BlobStore backingBackupBlobStore;
-	public static String bucket;
-	public static String backupBucket;
+	public static BlobStore backingBlobStore, backingBackupBlobStore, dumpsStore;
+	public static String bucket, backupBucket;
 	public static String publicHost;
-	public static MariaDbPoolDataSource dataSource;
+	public static DataSource dataSource;
+	public static Map<String, String> users;
 	public static volatile boolean readOnly = false;
 	private static boolean backingUp = false;
 	private static boolean rivetEnabled;
@@ -60,6 +64,13 @@ public class Poolmgr {
 
 	public static void main(String[] args) throws Exception {
 		try {
+			Properties dumpsProps = new Properties();
+			dumpsProps.setProperty(FilesystemConstants.PROPERTY_BASEDIR, "dumps");
+			dumpsStore = ContextBuilder.newBuilder("filesystem")
+					.overrides(dumpsProps)
+					.build(BlobStoreContext.class)
+					.getBlobStore();
+					
 			Stopwatch initSw = Stopwatch.createStarted();
 			reloadConfig();
 	
@@ -84,17 +95,11 @@ public class Poolmgr {
 			QueuedThreadPool pool = (QueuedThreadPool)s3ProxyServer.getThreadPool();
 			pool.setName("Jetty-Common");
 	
-			Properties dumpsProps = new Properties();
-			dumpsProps.setProperty(FilesystemConstants.PROPERTY_BASEDIR, "dumps");
-			BlobStore dumpsStore = ContextBuilder.newBuilder("filesystem")
-					.overrides(dumpsProps)
-					.build(BlobStoreContext.class)
-					.getBlobStore();
-	
 			s3Proxy.setBlobStoreLocator((identity, container, blob) -> {
 				reloadConfigIfChanged();
-				if (config.containsKey("users") && config.getObject("users").containsKey(identity)) {
-					return Maps.immutableEntry(((JsonPrimitive)config.getObject("users").get(identity)).asString(),
+				String secret = users.get(identity);
+				if (secret != null) {
+					return Maps.immutableEntry(secret,
 							new JortageBlobStore(backingBlobStore, dumpsStore, bucket, identity, dataSource));
 				} else {
 					throw new RuntimeException("Access denied");
@@ -196,7 +201,7 @@ public class Poolmgr {
 	}
 
 	public static void reloadConfigIfChanged() {
-		if (System.currentTimeMillis()-configFileLastLoaded > 500 && configFile.lastModified() > configFileLastLoaded) reloadConfig();
+//		if (System.currentTimeMillis()-configFileLastLoaded > 500 && configFile.lastModified() > configFileLastLoaded) reloadConfig();
 	}
 
 	private static String s(int i) {
@@ -204,7 +209,7 @@ public class Poolmgr {
 	}
 
 	private static void reloadConfig() {
-		boolean reloading = config != null;
+		boolean reloading = dataSource != null;
 		try {
 			String prelude = "\r"+(reloading ? "Reloading" : "Loading")+" config: ";
 			System.err.print(prelude+"Parsing...");
@@ -237,9 +242,20 @@ public class Poolmgr {
 			Escaper esc = UrlEscapers.urlFormParameterEscaper();
 			System.err.print(prelude+"Connecting to MariaDB...   ");
 			System.err.flush();
-			MariaDbPoolDataSource dataSourceTmp =
-					new MariaDbPoolDataSource("jdbc:mariadb://"+pesc.escape(sqlHost)+":"+sqlPort+"/"+pesc.escape(sqlDb)
-					+"?user="+esc.escape(sqlUser)+"&password="+esc.escape(sqlPass)+"&autoReconnect=true");
+			HikariDataSource dataSourceTmp = new HikariDataSource();
+			dataSourceTmp.setJdbcUrl("jdbc:mariadb://"+pesc.escape(sqlHost)+":"+sqlPort+"/"+pesc.escape(sqlDb));
+			dataSourceTmp.setUsername(sqlUser);
+			dataSourceTmp.setPassword(sqlPass);
+			dataSourceTmp.addDataSourceProperty("cachePrepStmts", "true");
+			dataSourceTmp.addDataSourceProperty("prepStmtCacheSize", "100");
+			dataSourceTmp.addDataSourceProperty("prepStmtCacheSqlLimit", "3000");
+			dataSourceTmp.addDataSourceProperty("useServerPrepStmts", "true");
+			dataSourceTmp.addDataSourceProperty("useLocalSessionState", "true");
+			dataSourceTmp.addDataSourceProperty("rewriteBatchedStatements", "true");
+			dataSourceTmp.addDataSourceProperty("cacheResultSetMetadata", "true");
+			dataSourceTmp.addDataSourceProperty("cacheServerConfiguration", "true");
+			dataSourceTmp.addDataSourceProperty("elideSetAutoCommits", "true");
+			dataSourceTmp.addDataSourceProperty("maintainTimeStats", "false");
 			try (Connection c = dataSourceTmp.getConnection()) {
 				execOneshot(c, "CREATE TABLE IF NOT EXISTS `name_map` (\n" +
 						"  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n" +
@@ -269,9 +285,14 @@ public class Poolmgr {
 						"  PRIMARY KEY (`hash`)\n" +
 						") ROW_FORMAT=COMPRESSED;");
 			}
+			ImmutableMap.Builder<String, String> usersTmp = ImmutableMap.builder();
+			for (Map.Entry<String, JsonElement> en : configTmp.getObject("users").entrySet()) {
+				usersTmp.put(en.getKey(), ((JsonPrimitive)en.getValue()).asString());
+				dumpsStore.createContainerInLocation(null, en.getKey());
+			}
+			users = usersTmp.build();
 			System.err.println("\r"+(reloading ? "Reloading" : "Loading")+" config... done                  ");
-			MariaDbPoolDataSource oldDataSource = dataSource;
-			config = configTmp;
+			HikariDataSource oldDataSource = (HikariDataSource)dataSource;
 			configFileLastLoaded = configFileLastLoadedTmp;
 			bucket = bucketTmp;
 			publicHost = publicHostTmp;

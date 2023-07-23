@@ -98,7 +98,7 @@ public final class RivetHandler extends AbstractHandler {
 	private final LoadingCache<String, HashCode> urlCache = CacheBuilder.newBuilder()
 			.concurrencyLevel(1)
 			.expireAfterWrite(10, TimeUnit.MINUTES)
-			.removalListener((n) -> {
+			.<String, HashCode>removalListener((n) -> {
 				synchronized (retrieveMutex) {
 					results.remove(n.getKey());
 				}
@@ -171,7 +171,7 @@ public final class RivetHandler extends AbstractHandler {
 				}
 
 				private HashCode checkShortCircuit(String originalUrl, HttpUrl url, Temperature temp) {
-					String publicHost = Poolmgr.config.getObject("backend").get(String.class, "publicHost").replaceFirst("^https?://", "");
+					String publicHost = Poolmgr.publicHost.replaceFirst("^https?://", "");
 					String fullHost = url.host();
 					if (url.port() != (url.scheme().equals("https") ? 443 : 80)) {
 						fullHost = fullHost+":"+url.port();
@@ -457,7 +457,7 @@ public final class RivetHandler extends AbstractHandler {
 				return null;
 			}
 			
-			if (!Poolmgr.config.containsKey("users") || !Poolmgr.config.getObject("users").containsKey(identity)) {
+			if (!Poolmgr.users.containsKey(identity)) {
 				jsonError(res, 401, "Rivet-Auth header invalid (Bad access ID)");
 				return null;
 			}
@@ -490,7 +490,7 @@ public final class RivetHandler extends AbstractHandler {
 			}
 			String payloadStr = new String(payload, Charsets.UTF_8);
 			
-			String key = Poolmgr.config.getObject("users").get(String.class, identity);
+			String key = Poolmgr.users.get(identity);
 			assertSuccess(() -> mac.init(new SecretKeySpec(key.getBytes(Charsets.UTF_8), "RAW")));
 			String query;
 			if (req.getQueryString() == null) {

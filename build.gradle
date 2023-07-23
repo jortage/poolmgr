@@ -10,7 +10,7 @@ repositories {
 
 base {
 	archivesName = 'jortage-poolmgr'
-	version = '1.4.1'
+	version = '1.4.2'
 }
 
 compileJava {
@@ -33,9 +33,11 @@ configurations.all {
 
 dependencies {
 	implementation 'blue.endless:jankson:1.2.3'
-	implementation 'org.mariadb.jdbc:mariadb-java-client:3.1.4'
 	implementation 'com.squareup.okhttp3:okhttp:4.11.0'
 	implementation 'com.squareup.okhttp3:okhttp-brotli:4.11.0'
+	
+	implementation 'org.mariadb.jdbc:mariadb-java-client:3.1.4'
+	implementation 'com.zaxxer:HikariCP:5.0.1'
 	
 	implementation 'org.apache.jclouds:jclouds-blobstore:2.5.0'
 	implementation 'org.apache.jclouds.provider:aws-s3:2.5.0'
