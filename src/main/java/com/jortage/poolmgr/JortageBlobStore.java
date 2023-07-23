@@ -324,7 +324,8 @@ public class JortageBlobStore extends ForwardingBlobStore {
 				// (causes intermittent 429s on at least DigitalOcean)
 				Thread.sleep(100);
 				BlobMetadata meta = delegate().blobMetadata(mpu.containerName(), mpu.blobName());
-				if (meta == null) {
+				BlobMetadata targetMeta = delegate().blobMetadata(bucket, path);
+				if (targetMeta == null) {
 					Thread.sleep(100);
 					etag = delegate().copyBlob(mpu.containerName(), mpu.blobName(), bucket, path, CopyOptions.builder().contentMetadata(meta.getContentMetadata()).build());
 					Thread.sleep(100);
@@ -332,7 +333,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 					Queries.putPendingBackup(dataSource, hash);
 				} else {
 					Thread.sleep(100);
-					etag = delegate().blobMetadata(bucket, path).getETag();
+					etag = targetMeta.getETag();
 				}
 				Queries.putMap(dataSource, identity, Preconditions.checkNotNull(meta.getUserMetadata().get("jortage-originalname")), hash);
 				Queries.putFilesize(dataSource, hash, counter.getCount());

@@ -8,8 +8,14 @@ repositories {
 	mavenCentral()
 }
 
-archivesBaseName = 'jortage-poolmgr'
-version = '1.4.0'
+base {
+	archivesName = 'jortage-poolmgr'
+	version = '1.4.1'
+}
+
+compileJava {
+	options.release = 11
+}
 
 sourceSets {
 	main {
