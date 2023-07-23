@@ -300,7 +300,7 @@ public class Poolmgr {
 	}
 
 	private static BlobStore createBlobStore(JsonObject obj) {
-		return ContextBuilder.newBuilder("s3")
+		return ContextBuilder.newBuilder("aws-s3")
 			.credentials(((JsonPrimitive)obj.get("accessKeyId")).asString(), ((JsonPrimitive)obj.get("secretAccessKey")).asString())
 			.modules(ImmutableList.of(new SLF4JLoggingModule()))
 			.endpoint(((JsonPrimitive)obj.get("endpoint")).asString())

@@ -19,6 +19,12 @@ sourceSets {
 	}
 }
 
+configurations.all {
+	resolutionStrategy {
+		force 'org.slf4j:slf4j-api:1.7.36'
+	}
+}
+
 dependencies {
 	implementation 'blue.endless:jankson:1.2.3'
 	implementation 'org.mariadb.jdbc:mariadb-java-client:3.1.4'
