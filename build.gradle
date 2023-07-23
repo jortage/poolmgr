@@ -29,7 +29,7 @@ dependencies {
 	implementation 'org.eclipse.jetty:jetty-server:9.4.24.v20191120'
 	
 	implementation 'org.slf4j:slf4j-api:1.7.9'
-	implementation 'org.slf4j:slf4j-nop:1.7.9'
+	implementation 'org.slf4j:slf4j-simple:1.7.9'
 	
 	implementation 'com.google.code.findbugs:jsr305:3.0.2'
 	implementation 'com.google.code.findbugs:findbugs-annotations:3.0.1'
