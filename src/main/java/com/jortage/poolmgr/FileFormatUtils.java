@@ -22,6 +22,7 @@ public class FileFormatUtils {
 			in.transferTo(out);
 		} else if (Longs.fromByteArray(magic) == PngSurgeon.PNG_MAGIC) {
 			try (var ps = new PngSurgeon(in, out)) {
+				out.write(magic, 0, count);
 				var baos = new ByteArrayOutputStream();
 				byte[] buf = new byte[512];
 				outer: while (true) {
