@@ -1,7 +1,7 @@
 plugins {
 	id 'com.github.johnrengelman.shadow' version '8.1.1'
 	id 'java'
-	id 'com.github.ben-manes.versions' version '0.47.0'
+	id 'com.github.ben-manes.versions' version '0.48.0'
 }	
 
 repositories {
@@ -10,7 +10,7 @@ repositories {
 
 base {
 	archivesName = 'jortage-poolmgr'
-	version = '1.4.2'
+	version = '1.5.0'
 }
 
 compileJava {
@@ -36,7 +36,7 @@ dependencies {
 	implementation 'com.squareup.okhttp3:okhttp:4.11.0'
 	implementation 'com.squareup.okhttp3:okhttp-brotli:4.11.0'
 	
-	implementation 'org.mariadb.jdbc:mariadb-java-client:3.1.4'
+	implementation 'org.mariadb.jdbc:mariadb-java-client:3.2.0'
 	implementation 'com.zaxxer:HikariCP:5.0.1'
 	
 	implementation 'org.apache.jclouds:jclouds-blobstore:2.5.0'
@@ -44,7 +44,7 @@ dependencies {
 	implementation 'org.apache.jclouds.api:filesystem:2.5.0'
 	implementation 'org.apache.jclouds.driver:jclouds-slf4j:2.5.0'
 	
-	implementation 'org.eclipse.jetty:jetty-server:11.0.15'
+	implementation 'org.eclipse.jetty:jetty-server:11.0.16'
 	
 	implementation 'org.slf4j:slf4j-api:1.7.36'
 	implementation 'org.slf4j:slf4j-simple:1.7.36'
@@ -83,5 +83,6 @@ tasks.named("dependencyUpdates").configure {
 	rejectVersionIf {
 		it.candidate.version.contains("alpha") || it.candidate.version.contains("beta")
 			|| (it.candidate.group == 'org.slf4j' && it.candidate.version.startsWith("2."))
+			|| (it.candidate.group == 'org.eclipse.jetty' && it.candidate.version.startsWith("12."))
 	}
 }

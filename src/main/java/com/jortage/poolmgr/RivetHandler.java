@@ -136,7 +136,7 @@ public final class RivetHandler extends AbstractHandler {
 									OutputStream sinkOut = bss.getSink().openStream();
 									HashingOutputStream hos = new HashingOutputStream(Hashing.sha512(), sinkOut);
 									try (InputStream in = getRes.body().byteStream()) {
-										ByteStreams.copy(in, hos);
+										FileFormatUtils.reprocess(in, hos);
 									}
 									hos.close();
 									HashCode hash = hos.hash();
