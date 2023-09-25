@@ -1,4 +1,6 @@
 {
+	useNewUrls: false
+	readOnly: false
 	backend: {
 		endpoint: "https://sfo2.digitaloceanspaces.com"
 		accessKeyId: "ACCESS_KEY_ID"

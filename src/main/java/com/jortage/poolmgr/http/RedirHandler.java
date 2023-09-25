@@ -14,9 +14,12 @@ import com.jortage.poolmgr.Poolmgr;
 import com.jortage.poolmgr.Queries;
 
 import com.google.common.base.Splitter;
+import com.google.common.hash.HashCode;
+import com.google.common.io.BaseEncoding;
 import com.google.common.io.ByteStreams;
 
 public final class RedirHandler extends AbstractHandler {
+	private static final BaseEncoding B64URLNP = BaseEncoding.base64Url().omitPadding();
 	private static final Splitter REDIR_SPLITTER = Splitter.on('/').limit(2).omitEmptyStrings();
 
 	private final BlobStore dumpsStore;
@@ -71,9 +74,19 @@ public final class RedirHandler extends AbstractHandler {
 				if (waited) {
 					response.setHeader("Jortage-Waited", "true");
 				}
-				String hash = Queries.getMap(Poolmgr.dataSource, identity, name).toString();
+				HashCode hash = Queries.getMap(Poolmgr.dataSource, identity, name);
 				response.setHeader("Cache-Control", "public");
-				response.setHeader("Location", Poolmgr.publicHost+"/"+Poolmgr.hashToPath(hash));
+				if (Poolmgr.useNewUrls) {
+					int dotIdx = name.indexOf('.', name.lastIndexOf('/')+1);
+					String extension = "";
+					if (dotIdx != -1) {
+						extension = "."+name.substring(dotIdx+1);
+					}
+					String b64 = B64URLNP.encode(hash.asBytes());
+					response.setHeader("Location", Poolmgr.publicHost+"/blob2/"+b64.substring(0, 16)+"/"+b64.substring(16, b64.length()-8)+"/"+b64.substring(b64.length()-8)+extension);
+				} else {
+					response.setHeader("Location", Poolmgr.publicHost+"/"+Poolmgr.hashToPath(hash.toString()));
+				}
 				response.setStatus(301);
 			} catch (IllegalArgumentException e) {
 				response.sendError(404);

@@ -64,6 +64,7 @@ public class Poolmgr {
 	private static boolean backingUp = false;
 	private static boolean rivetEnabled;
 	private static boolean rivetState;
+	public static boolean useNewUrls;
 	
 	public static final Table<String, String, Object> provisionalMaps = HashBasedTable.create();
 
@@ -225,6 +226,7 @@ public class Poolmgr {
 			String publicHostTmp = ((JsonPrimitive)configTmp.getObject("backend").get("publicHost")).asString();
 			boolean rivetEnabledTmp = configTmp.recursiveGet(boolean.class, "rivet.enabled");
 			boolean readOnlyTmp = MoreObjects.firstNonNull(configTmp.get(boolean.class, "readOnly"), false);
+			boolean useNewUrlsTmp = MoreObjects.firstNonNull(configTmp.get(boolean.class, "useNewUrls"), false);
 			System.err.print(prelude+"Constructing blob stores...");
 			System.err.flush();
 			BlobStore backingBlobStoreTmp = createBlobStore(configTmp.getObject("backend"));
@@ -306,6 +308,7 @@ public class Poolmgr {
 			backingBackupBlobStore = backingBackupBlobStoreTmp;
 			dataSource = dataSourceTmp;
 			rivetEnabled = rivetEnabledTmp;
+			useNewUrls = useNewUrlsTmp;
 			if (rivetState != rivetEnabled && reloading) {
 				System.err.println("WARNING: Cannot hot-"+(rivetEnabled ? "enable" : "disable")+" Rivet. jortage-proxy must be restarted for this change to take effect.");
 			}
