@@ -1,4 +1,4 @@
-package com.jortage.poolmgr;
+package com.jortage.poolmgr.util;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;

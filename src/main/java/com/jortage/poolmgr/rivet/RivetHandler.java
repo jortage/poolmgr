@@ -1,4 +1,4 @@
-package com.jortage.poolmgr;
+package com.jortage.poolmgr.rivet;
 
 import static com.google.common.base.Verify.verify;
 
@@ -35,6 +35,12 @@ import org.jclouds.blobstore.options.PutOptions;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
+import com.jortage.poolmgr.FileReprocessor;
+import com.jortage.poolmgr.Poolmgr;
+import com.jortage.poolmgr.Queries;
+import com.jortage.poolmgr.util.ByteSinkSource;
+import com.jortage.poolmgr.util.FileByteSinkSource;
+import com.jortage.poolmgr.util.MemoryByteSinkSource;
 
 import com.google.common.base.CharMatcher;
 import com.google.common.base.Charsets;
@@ -136,7 +142,7 @@ public final class RivetHandler extends AbstractHandler {
 									OutputStream sinkOut = bss.getSink().openStream();
 									HashingOutputStream hos = new HashingOutputStream(Hashing.sha512(), sinkOut);
 									try (InputStream in = getRes.body().byteStream()) {
-										FileFormatUtils.reprocess(in, hos);
+										FileReprocessor.reprocess(in, hos);
 									}
 									hos.close();
 									HashCode hash = hos.hash();

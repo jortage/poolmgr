@@ -28,6 +28,11 @@ import org.jclouds.blobstore.domain.BlobAccess;
 import org.jclouds.blobstore.options.PutOptions;
 import org.jclouds.filesystem.reference.FilesystemConstants;
 import org.jclouds.logging.slf4j.config.SLF4JLoggingModule;
+
+import com.jortage.poolmgr.http.MastodonHackHandler;
+import com.jortage.poolmgr.http.OuterHandler;
+import com.jortage.poolmgr.http.RedirHandler;
+import com.jortage.poolmgr.rivet.RivetHandler;
 import com.zaxxer.hikari.HikariDataSource;
 
 import com.google.common.base.MoreObjects;

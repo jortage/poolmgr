@@ -6,13 +6,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
-import com.jortage.poolmgr.PngSurgeon.CRCException;
-import com.jortage.poolmgr.PngSurgeon.Chunk;
+import com.jortage.poolmgr.util.PngSurgeon;
+import com.jortage.poolmgr.util.PngSurgeon.CRCException;
+import com.jortage.poolmgr.util.PngSurgeon.Chunk;
 
 import com.google.common.base.Charsets;
 import com.google.common.primitives.Longs;
 
-public class FileFormatUtils {
+public class FileReprocessor {
 
 	public static void reprocess(InputStream in, OutputStream out) throws IOException {
 		byte[] magic = new byte[8];

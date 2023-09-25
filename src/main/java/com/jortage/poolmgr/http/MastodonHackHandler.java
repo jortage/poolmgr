@@ -1,4 +1,4 @@
-package com.jortage.poolmgr;
+package com.jortage.poolmgr.http;
 
 import java.io.IOException;
 import java.util.concurrent.Executors;
@@ -13,6 +13,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.handler.HandlerWrapper;
+
+import com.jortage.poolmgr.Poolmgr;
 
 public class MastodonHackHandler extends HandlerWrapper {
 

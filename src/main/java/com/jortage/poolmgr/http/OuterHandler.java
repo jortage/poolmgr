@@ -1,4 +1,4 @@
-package com.jortage.poolmgr;
+package com.jortage.poolmgr.http;
 
 import java.io.IOException;
 

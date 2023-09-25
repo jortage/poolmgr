@@ -213,7 +213,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 			try (InputStream is = blob.getPayload().openStream();
 					FileOutputStream fos = new FileOutputStream(f)) {
 				HashingOutputStream hos = new HashingOutputStream(Hashing.sha512(), fos);
-				FileFormatUtils.reprocess(is, hos);
+				FileReprocessor.reprocess(is, hos);
 				hash = hos.hash();
 			}
 			String hashString = hash.toString();
@@ -314,7 +314,7 @@ public class JortageBlobStore extends ForwardingBlobStore {
 			try (InputStream stream = delegate().getBlob(mpu.containerName(), mpu.blobName()).getPayload().openStream()) {
 				CountingOutputStream counter = new CountingOutputStream(ByteStreams.nullOutputStream());
 				HashingOutputStream hos = new HashingOutputStream(Hashing.sha512(), counter);
-				FileFormatUtils.reprocess(stream, hos);
+				FileReprocessor.reprocess(stream, hos);
 				HashCode hash = hos.hash();
 				String hashStr = hash.toString();
 				String path = Poolmgr.hashToPath(hashStr);

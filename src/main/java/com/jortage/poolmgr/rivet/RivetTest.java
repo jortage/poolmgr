@@ -1,4 +1,4 @@
-package com.jortage.poolmgr;
+package com.jortage.poolmgr.rivet;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;

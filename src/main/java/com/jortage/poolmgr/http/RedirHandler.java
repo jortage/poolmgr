@@ -1,4 +1,4 @@
-package com.jortage.poolmgr;
+package com.jortage.poolmgr.http;
 
 import java.io.IOException;
 import java.util.List;
@@ -9,6 +9,10 @@ import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.jclouds.blobstore.BlobStore;
 import org.jclouds.blobstore.domain.Blob;
+
+import com.jortage.poolmgr.Poolmgr;
+import com.jortage.poolmgr.Queries;
+
 import com.google.common.base.Splitter;
 import com.google.common.io.ByteStreams;
 
