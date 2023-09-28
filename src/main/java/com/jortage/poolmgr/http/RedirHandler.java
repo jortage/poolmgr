@@ -2,6 +2,8 @@ package com.jortage.poolmgr.http;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.regex.Pattern;
+
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -21,6 +23,8 @@ import com.google.common.io.ByteStreams;
 public final class RedirHandler extends AbstractHandler {
 	private static final BaseEncoding B64URLNP = BaseEncoding.base64Url().omitPadding();
 	private static final Splitter REDIR_SPLITTER = Splitter.on('/').limit(2).omitEmptyStrings();
+	// same regex on the CDN
+	private static final Pattern VALID_EXTENSION = Pattern.compile("^(\\.[a-zA-Z0-9.]{2,8})?$");
 
 	private final BlobStore dumpsStore;
 
@@ -78,12 +82,22 @@ public final class RedirHandler extends AbstractHandler {
 				response.setHeader("Cache-Control", "public");
 				if (Poolmgr.useNewUrls) {
 					int dotIdx = name.indexOf('.', name.lastIndexOf('/')+1);
-					String extension = "";
+					String ext = "";
 					if (dotIdx != -1) {
-						extension = "."+name.substring(dotIdx+1);
+						ext = name.substring(dotIdx);
+					}
+					while (!ext.isEmpty() && !VALID_EXTENSION.matcher(ext).matches()) {
+						int ind = ext.indexOf('.', 1);
+						if (ind == -1) {
+							// can't use this extension, drop it
+							ext = "";
+						} else {
+							// reduce the extension until it is valid
+							ext = ext.substring(ind);
+						}
 					}
 					String b64 = B64URLNP.encode(hash.asBytes());
-					response.setHeader("Location", Poolmgr.publicHost+"/blob2/"+b64.substring(0, 16)+"/"+b64.substring(16, b64.length()-8)+"/"+b64.substring(b64.length()-8)+extension);
+					response.setHeader("Location", Poolmgr.publicHost+"/blob2/"+b64.substring(0, 16)+"/"+b64.substring(16, b64.length()-8)+"/"+b64.substring(b64.length()-8)+ext);
 				} else {
 					response.setHeader("Location", Poolmgr.publicHost+"/"+Poolmgr.hashToPath(hash.toString()));
 				}
