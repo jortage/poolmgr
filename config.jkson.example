@@ -2,6 +2,7 @@
 	useNewUrls: false
 	readOnly: false
 	backend: {
+		protocol: "s3"
 		endpoint: "https://sfo2.digitaloceanspaces.com"
 		accessKeyId: "ACCESS_KEY_ID"
 		secretAccessKey: "SECRET_ACCESS_KEY"
@@ -9,6 +10,7 @@
 		publicHost: "https://sfo2.digitaloceanspaces.com/mybucket"
 	}
 	backupBackend: {
+		protocol: "s3"
 		endpoint: "https://s3.us-east-2.wasabisys.com"
 		accessKeyId: "ACCESS_KEY_ID"
 		secretAccessKey: "SECRET_ACCESS_KEY"

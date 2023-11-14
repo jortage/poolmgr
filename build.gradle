@@ -10,7 +10,7 @@ repositories {
 
 base {
 	archivesName = 'jortage-poolmgr'
-	version = '1.5.3'
+	version = '1.5.4'
 }
 
 compileJava {
@@ -41,6 +41,7 @@ dependencies {
 	
 	implementation 'org.apache.jclouds:jclouds-blobstore:2.5.0'
 	implementation 'org.apache.jclouds.provider:aws-s3:2.5.0'
+	implementation 'org.apache.jclouds.provider:b2:2.5.0'
 	implementation 'org.apache.jclouds.api:filesystem:2.5.0'
 	implementation 'org.apache.jclouds.driver:jclouds-slf4j:2.5.0'
 	
@@ -73,6 +74,7 @@ shadowJar {
 		'Main-Class': 'com.jortage.poolmgr.Poolmgr'
 	)
 	archiveClassifier = ''
+	mergeServiceFiles()
 }
 
 build.dependsOn shadowJar

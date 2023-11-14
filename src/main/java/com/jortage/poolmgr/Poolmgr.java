@@ -29,7 +29,6 @@ import org.jclouds.blobstore.options.PutOptions;
 import org.jclouds.filesystem.reference.FilesystemConstants;
 import org.jclouds.logging.slf4j.config.SLF4JLoggingModule;
 
-import com.jortage.poolmgr.http.MastodonHackHandler;
 import com.jortage.poolmgr.http.OuterHandler;
 import com.jortage.poolmgr.http.RedirHandler;
 import com.jortage.poolmgr.rivet.RivetHandler;
@@ -97,7 +96,7 @@ public class Poolmgr {
 			Field serverField = S3Proxy.class.getDeclaredField("server");
 			serverField.setAccessible(true);
 			Server s3ProxyServer = (Server) serverField.get(s3Proxy);
-			s3ProxyServer.setHandler(new OuterHandler(new MastodonHackHandler(s3ProxyServer.getHandler())));
+			s3ProxyServer.setHandler(new OuterHandler(s3ProxyServer.getHandler()));
 			QueuedThreadPool pool = (QueuedThreadPool)s3ProxyServer.getThreadPool();
 			pool.setName("Jetty-Common");
 	
@@ -329,7 +328,9 @@ public class Poolmgr {
 	}
 
 	private static BlobStore createBlobStore(JsonObject obj) {
-		return ContextBuilder.newBuilder("aws-s3")
+		String protocol = ((JsonPrimitive)obj.get("protocol")).asString();
+		if ("s3".equals(protocol)) protocol = "aws-s3";
+		return ContextBuilder.newBuilder(protocol)
 			.credentials(((JsonPrimitive)obj.get("accessKeyId")).asString(), ((JsonPrimitive)obj.get("secretAccessKey")).asString())
 			.modules(ImmutableList.of(new SLF4JLoggingModule()))
 			.endpoint(((JsonPrimitive)obj.get("endpoint")).asString())
