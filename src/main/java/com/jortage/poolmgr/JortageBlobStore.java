@@ -328,7 +328,9 @@ public class JortageBlobStore extends ForwardingBlobStore {
 					Thread.sleep(100);
 					etag = delegate().copyBlob(mpu.containerName(), mpu.blobName(), bucket, path, CopyOptions.builder().contentMetadata(meta.getContentMetadata()).build());
 					Thread.sleep(100);
-					delegate().setBlobAccess(bucket, path, BlobAccess.PUBLIC_READ);
+					try {
+						delegate().setBlobAccess(bucket, path, BlobAccess.PUBLIC_READ);
+					} catch (UnsupportedOperationException ignore) {}
 					Queries.putPendingBackup(dataSource, hash);
 				} else {
 					Thread.sleep(100);
